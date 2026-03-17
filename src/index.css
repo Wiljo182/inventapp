@@ -1,0 +1,10 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #F5EFE0; color: #1A1A1A; }
+input, select, textarea, button { font-family: inherit; }
+input[type="file"] { display: none; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: #C8B89A; border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.fadeIn { animation: fadeIn 0.25s ease; }
