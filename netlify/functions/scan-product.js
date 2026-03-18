@@ -1,106 +1,81 @@
-exports.handler = async function (event) {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
-  }
+exports.handler = async (event) => {
+  if (event.httpMethod !== "POST") return { statusCode:405, body:"Method Not Allowed" };
 
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!ANTHROPIC_API_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: "API key no configurada" }) };
-  }
+  const CORS = {
+    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 
-  let body;
-  try {
-    body = JSON.parse(event.body);
-  } catch {
-    return { statusCode: 400, body: JSON.stringify({ error: "Body inválido" }) };
-  }
-
-  const { imageBase64, mimeType } = body;
-  if (!imageBase64) {
-    return { statusCode: 400, body: JSON.stringify({ error: "Imagen requerida" }) };
-  }
-
-  const prompt = `Eres experto en productos de consumo masivo vendidos en tiendas de barrio y minimercados de Colombia, especialmente en Cartagena.
-
-Analiza esta imagen con MUCHO detalle. Lee TODO el texto visible en el empaque: marca, nombre del producto, gramaje, volumen, código de barras si se ve.
-
-Responde ÚNICAMENTE con este JSON válido, sin backticks, sin texto extra:
-
-{
-  "nombre": "Nombre completo: MARCA + PRODUCTO + PRESENTACIÓN (ej: Papi Papa Delgadas 60g, Arroz Roa 1kg, Leche Colanta 900ml)",
-  "categoria": "Una de exactamente: Granos y Cereales, Lácteos, Bebidas, Aseo Personal, Limpieza Hogar, Snacks, Enlatados, Panadería, Carnes y Embutidos, Frutas y Verduras, Condimentos, Otro",
-  "envase": "Uno de exactamente: Bolsa, Botella, Caja, Lata, Tarro, Doypack, Sachet, Unidad",
-  "codigoBarras": "el número del código de barras si es visible, si no vacío",
-  "codigo": "Código corto sugerido tipo SNA-001, LAC-002, etc.",
-  "unidad": "Uno de: unid, kg, g, lt, ml, paq",
-  "precioVenta": número en pesos colombianos COP estimado para tienda de barrio,
-  "precioCompra": número en pesos colombianos COP estimado mayorista,
-  "proveedor": "Empresa distribuidora típica en Colombia para este producto",
-  "nota": "Observación útil para el tendero: rotación, conservación, etc."
-}
-
-Rangos de precios COP de referencia:
-- Snacks pequeños (40-80g): venta 1800-3500, compra 1200-2200
-- Bebidas (250-600ml): venta 1500-4000, compra 900-2500
-- Lácteos (900ml-1L): venta 3500-5000, compra 2500-3500
-- Granos (500g-1kg): venta 3500-7000, compra 2500-5000
-- Aseo personal: venta 4000-25000, compra 2800-18000
-- Limpieza hogar: venta 3500-15000, compra 2500-10000
-
-IMPORTANTE: Aunque no puedas leer todo el empaque, usa tu conocimiento del producto para completar los campos. Siempre devuelve JSON.`;
+  if (event.httpMethod === "OPTIONS") return { statusCode:200, headers:CORS, body:"" };
 
   try {
+    const { imageBase64, mimeType = "image/jpeg" } = JSON.parse(event.body || "{}");
+    if (!imageBase64) return { statusCode:400, headers:CORS, body: JSON.stringify({ success:false, error:"No image" }) };
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
+        "Content-Type":      "application/json",
+        "x-api-key":         process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-5-20251101",
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mimeType || "image/jpeg",
-                  data: imageBase64,
-                },
-              },
-              { type: "text", text: prompt },
-            ],
-          },
-        ],
-      }),
+        model:      "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            { type:"image", source:{ type:"base64", media_type:mimeType, data:imageBase64 } },
+            { type:"text",  text: `Eres un experto en productos de consumo masivo de Colombia.
+Analiza esta imagen e identifica el producto. Devuelve SOLO un JSON válido (sin markdown, sin backticks) con estos campos:
+
+{
+  "nombre": "nombre comercial completo con peso/volumen",
+  "categoria": "una de: Granos y Cereales, Lácteos, Bebidas, Aseo Personal, Limpieza Hogar, Snacks, Enlatados, Panadería, Carnes y Embutidos, Frutas y Verduras, Condimentos, Otro",
+  "envase": "una de: Bolsa, Botella, Caja, Lata, Tarro, Doypack, Sachet, Unidad",
+  "codigoBarras": "código de barras si es visible, sino null",
+  "codigo": "código interno sugerido de 3-6 letras",
+  "unidad": "una de: unid, kg, g, lt, ml, paq",
+  "precioVenta": número en COP basado en precios reales de Colombia (sin puntos ni comas),
+  "precioCompra": número en COP aproximado al 70% del precio de venta,
+  "proveedor": "distribuidor o fabricante colombiano más probable",
+  "fechaVencimiento": "fecha de vencimiento en formato YYYY-MM-DD si es visible en el empaque, sino null",
+  "nota": "observación relevante del producto"
+}
+
+Precios de referencia Colombia 2024:
+- Snacks pequeños (60-100g): venta 2500-4500
+- Bebidas 250-500ml: venta 2000-5000  
+- Bebidas 1L+: venta 4000-9000
+- Lácteos 200-500ml: venta 2000-5000
+- Arroz/Azúcar 500g: venta 3000-5000
+- Jabones/Detergentes: venta 3000-12000
+- Enlatados: venta 4000-15000
+
+Si no puedes identificar el producto con certeza, usa los campos que puedas ver claramente y deja null en el resto.`
+          }]
+        }]
+      })
     });
 
     const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "API error");
 
-    if (!response.ok) {
-      throw new Error(data?.error?.message || `HTTP ${response.status}`);
-    }
-
-    const raw = data.content?.find((b) => b.type === "text")?.text || "";
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("Sin JSON en respuesta");
-
-    const product = JSON.parse(match[0]);
+    const text = data.content?.[0]?.text || "";
+    const clean = text.replace(/```json|```/g, "").trim();
+    const product = JSON.parse(clean);
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ success: true, product }),
+      headers: { ...CORS, "Content-Type":"application/json" },
+      body: JSON.stringify({ success:true, product })
     };
-  } catch (err) {
-    console.error("Error Claude Vision:", err);
+  } catch(e) {
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message || "Error interno" }),
+      statusCode: 200,
+      headers: { ...CORS, "Content-Type":"application/json" },
+      body: JSON.stringify({ success:false, error: e.message })
     };
   }
 };
