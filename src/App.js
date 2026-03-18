@@ -336,6 +336,12 @@ export default function App() {
   const [movForm,       setMovForm]       = useState({pid:"",tipo:"entrada",qty:"",motivo:""});
   const [projModal,     setProjModal]     = useState(false);
   const [newProjName,   setNewProjName]   = useState("");
+  const [inviteEmail,   setInviteEmail]   = useState("");
+  const [inviteRole,    setInviteRole]    = useState("consultor");
+  const [inviteModal,   setInviteModal]   = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [clientModal,   setClientModal]   = useState(false);
+  const [newClient,     setNewClient]     = useState({email:"",pass:"",name:""});
   const [loadingData,   setLoadingData]   = useState(false);
   const [invModal,      setInvModal]      = useState(false);  // inventario diferencial
   const [masterModal,   setMasterModal]   = useState(false);  // agregar al master
@@ -409,6 +415,71 @@ export default function App() {
     setCurrentProject(np);
     setNewProjName(""); setProjModal(false);
     showToast(`✅ Proyecto "${np.name}" creado`,"success");
+  }
+
+
+  // ── Invitar miembro al proyecto ──
+  async function inviteMember() {
+    if (!inviteEmail.trim() || !currentProject) return;
+    setInviteLoading(true);
+    try {
+      const snap = await getDocs(query(collection(db,"users"), where("email","==",inviteEmail.trim().toLowerCase())));
+      if (snap.empty) { showToast("⚠️ No hay cuenta con ese email. Pídele que se registre primero.","warning"); setInviteLoading(false); return; }
+      const memberUid = snap.docs[0].id;
+      if ((currentProject.members||[]).includes(memberUid)) { showToast("⚠️ Ya tiene acceso","warning"); setInviteLoading(false); return; }
+      const upd = [...(currentProject.members||[]), memberUid];
+      await updateDoc(doc(db,"projects",currentProject.id),{members:upd});
+      setCurrentProject(p=>({...p,members:upd}));
+      setProjects(prev=>prev.map(p=>p.id===currentProject.id?{...p,members:upd}:p));
+      setInviteEmail(""); setInviteModal(false);
+      showToast(`✅ ${inviteEmail.trim()} agregado al proyecto`,"success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+    finally { setInviteLoading(false); }
+  }
+
+  // ── Crear cuenta cliente/consultor extra (API REST — no cierra sesión) ──
+  async function createClientAccount() {
+    if (!newClient.email||!newClient.pass||!newClient.name) { showToast("⚠️ Completa todos los campos","warning"); return; }
+    if (!currentProject) { showToast("⚠️ Selecciona un proyecto primero","warning"); return; }
+    if (newClient.pass.length < 6) { showToast("⚠️ Contraseña mínimo 6 caracteres","warning"); return; }
+    setInviteLoading(true);
+    try {
+      const apiKey = process.env.REACT_APP_FIREBASE_API_KEY;
+      const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({email:newClient.email.toLowerCase(),password:newClient.pass,returnSecureToken:false})
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error?.message === "EMAIL_EXISTS") {
+          const snap = await getDocs(query(collection(db,"users"),where("email","==",newClient.email.toLowerCase())));
+          if (!snap.empty) {
+            const uid = snap.docs[0].id;
+            await updateDoc(doc(db,"users",uid),{role:inviteRole,proyectoId:currentProject.id,name:newClient.name});
+            const upd = [...(currentProject.members||[]),uid];
+            await updateDoc(doc(db,"projects",currentProject.id),{members:upd});
+            setCurrentProject(p=>({...p,members:upd}));
+            setProjects(prev=>prev.map(p=>p.id===currentProject.id?{...p,members:upd}:p));
+            showToast(`✅ Usuario existente asignado como ${inviteRole}`,"success");
+            setClientModal(false); setNewClient({email:"",pass:"",name:""});
+          }
+        } else { throw new Error(data.error?.message||"Error al crear cuenta"); }
+        return;
+      }
+      const uid = data.localId;
+      await setDoc(doc(db,"users",uid),{
+        email:newClient.email.toLowerCase(), name:newClient.name,
+        role:inviteRole, proyectoId:currentProject.id,
+        createdAt:new Date().toISOString(), createdBy:user.uid
+      });
+      const upd = [...(currentProject.members||[]),uid];
+      await updateDoc(doc(db,"projects",currentProject.id),{members:upd});
+      setCurrentProject(p=>({...p,members:upd}));
+      setProjects(prev=>prev.map(p=>p.id===currentProject.id?{...p,members:upd}:p));
+      showToast(`✅ ${inviteRole==="cliente"?"Cliente":"Consultor"} ${newClient.name} creado — puede entrar con ${newClient.email}`,"success");
+      setClientModal(false); setNewClient({email:"",pass:"",name:""});
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+    finally { setInviteLoading(false); }
   }
 
   // ── Scanner result ──
@@ -554,7 +625,7 @@ export default function App() {
               {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
-          {isConsultor && <button style={S.bSm("var(--green-100)","var(--green-800)")} onClick={()=>setProjModal(true)}>+ Proyecto</button>}
+          {isConsultor && currentProject && <button style={S.bSm("var(--blue-100)","var(--blue-500)")} onClick={()=>setInviteModal(true)}>👥 Invitar</button>}{isConsultor && currentProject && <button style={S.bSm("#fef3c7","#92400e")} onClick={()=>setClientModal(true)}>+ Cliente</button>}{isConsultor && <button style={S.bSm("var(--green-100)","var(--green-800)")} onClick={()=>setProjModal(true)}>+ Proyecto</button>}
           <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:6}}>
             <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block"}}/>
             {userDoc?.name || user.email?.split("@")[0]}
@@ -966,6 +1037,71 @@ export default function App() {
             <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
               <button style={S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"})} onClick={()=>setProjModal(false)}>Cancelar</button>
               <button style={S.btn("var(--green-600)")} onClick={createProject}>✅ Crear Proyecto</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ════ MODAL INVITAR MIEMBRO ════ */}
+      {inviteModal && (
+        <div style={S.ovrl} onClick={e=>{if(e.target===e.currentTarget){setInviteModal(false);setInviteEmail("");}}}>
+          <div style={S.modal}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--gray-900)",marginBottom:6}}>👥 Invitar a "{currentProject?.name}"</div>
+            <div style={{fontSize:13,color:"var(--gray-500)",marginBottom:20}}>La persona debe tener cuenta creada en InventApp.</div>
+            <div style={S.fGrp}>
+              <label style={S.lbl}>Email del colaborador</label>
+              <input style={S.inp} type="email" value={inviteEmail} placeholder="colega@email.com" onChange={e=>setInviteEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&inviteMember()} autoFocus/>
+            </div>
+            <div style={{fontSize:12,color:"var(--gray-500)",marginTop:10,background:"var(--green-50)",borderRadius:8,padding:"10px 14px"}}>
+              💡 <strong>Tip:</strong> Tu colega debe registrarse primero en la app con su email. Luego lo invitas aquí y podrá ver y editar este proyecto.
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
+              <button style={S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"})} onClick={()=>{setInviteModal(false);setInviteEmail("");}}>Cancelar</button>
+              <button style={S.btn("var(--blue-500)")} onClick={inviteMember} disabled={inviteLoading}>
+                {inviteLoading ? <div style={{width:18,height:18,border:"2.5px solid rgba(255,255,255,.3)",borderTop:"2.5px solid #fff",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> : "✅ Invitar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ MODAL CREAR CLIENTE / CONSULTOR ════ */}
+      {clientModal && (
+        <div style={S.ovrl} onClick={e=>{if(e.target===e.currentTarget)setClientModal(false)}}>
+          <div style={S.modal}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--gray-900)",marginBottom:6}}>👤 Crear Cuenta de Acceso</div>
+            <div style={{fontSize:13,color:"var(--gray-500)",marginBottom:20}}>Crea acceso para un cliente o consultor y asígnalo al proyecto actual.</div>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
+              <div style={S.fGrp}>
+                <label style={S.lbl}>Nombre</label>
+                <input style={S.inp} value={newClient.name} placeholder="Nombre completo" onChange={e=>setNewClient(c=>({...c,name:e.target.value}))}/>
+              </div>
+              <div style={S.fGrp}>
+                <label style={S.lbl}>Email</label>
+                <input style={S.inp} type="email" value={newClient.email} placeholder="email@ejemplo.com" onChange={e=>setNewClient(c=>({...c,email:e.target.value}))}/>
+              </div>
+              <div style={S.fGrp}>
+                <label style={S.lbl}>Contraseña inicial</label>
+                <input style={S.inp} type="text" value={newClient.pass} placeholder="Mínimo 6 caracteres" onChange={e=>setNewClient(c=>({...c,pass:e.target.value}))}/>
+              </div>
+              <div style={S.fGrp}>
+                <label style={S.lbl}>Rol</label>
+                <select style={S.inp} value={inviteRole} onChange={e=>setInviteRole(e.target.value)}>
+                  <option value="cliente">🧑‍💼 Cliente — Solo ve Dashboard, Inventario y Análisis</option>
+                  <option value="consultor">🔧 Consultor — Acceso completo al proyecto</option>
+                </select>
+              </div>
+              <div style={{fontSize:12,background:"#fffbeb",borderRadius:8,padding:"10px 14px",color:"#92400e",border:"1px solid #fcd34d"}}>
+                📋 <strong>Proyecto asignado:</strong> {currentProject?.name}<br/>
+                {inviteRole==="cliente" ? "El cliente verá Dashboard, Inventario y Análisis de su tienda." : "El consultor tendrá acceso completo al proyecto."}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
+              <button style={S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"})} onClick={()=>setClientModal(false)}>Cancelar</button>
+              <button style={S.btn(inviteRole==="cliente"?"#d97706":"var(--green-600)")} onClick={createClientAccount} disabled={inviteLoading}>
+                {inviteLoading ? <div style={{width:18,height:18,border:"2.5px solid rgba(255,255,255,.3)",borderTop:"2.5px solid #fff",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> : `✅ Crear ${inviteRole}`}
+              </button>
             </div>
           </div>
         </div>
