@@ -342,6 +342,8 @@ export default function App() {
   const [inviteModal,   setInviteModal]   = useState(false);
   const [teamModal,     setTeamModal]     = useState(false);
   const [sidebarOpen,   setSidebarOpen]   = useState(false);
+  const [isMobile,      setIsMobile]      = useState(window.innerWidth < 640);
+  const [editQuickId,   setEditQuickId]   = useState(null);  // edición rápida desde bodega
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -351,6 +353,13 @@ export default function App() {
   const [invModal,      setInvModal]      = useState(false);  // inventario diferencial
   const [masterModal,   setMasterModal]   = useState(false);  // agregar al master
   const toastRef = useRef(null);
+
+  // ── Responsive: detectar mobile ──
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // ── Auth listener ──
   useEffect(() => {
@@ -588,7 +597,7 @@ export default function App() {
   }
 
   // ── Editar ──
-  function startEdit(p) { setEditId(p.id); setEditData({stock:p.stock,minimo:p.minimo,precioCompra:p.precioCompra,precioVenta:p.precioVenta}); }
+  function startEdit(p) { setEditId(p.id); setEditData({stock:p.stock,minimo:p.minimo,precioCompra:p.precioCompra,precioVenta:p.precioVenta,lote:p.lote||"",armario:p.armario||"",segmento:p.segmento||""}); }
   async function saveEdit(p) {
     try {
       await updateDoc(doc(db,`projects/${currentProject.id}/products`,p.id), editData);
@@ -722,102 +731,98 @@ export default function App() {
               {/* ── Cabecera ── */}
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
                 <div>
-                  <div style={{fontWeight:800,fontSize:24,color:"var(--gray-900)",lineHeight:1.1}}>{currentProject.name}</div>
-                  <div style={{fontSize:13,color:"var(--gray-400)",marginTop:3}}>{new Date().toLocaleDateString("es-CO",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+                  <div style={{fontWeight:800,fontSize:isMobile?20:24,color:"var(--gray-900)",lineHeight:1.1}}>{currentProject.name}</div>
+                  <div style={{fontSize:12,color:"var(--gray-400)",marginTop:3}}>{new Date().toLocaleDateString("es-CO",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
                 </div>
                 <button style={S.btn("var(--green-600)")} onClick={exportCSV}>⬇ CSV</button>
               </div>
 
-              {/* ── Layout 2 columnas: principal + alertas ── */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:16,alignItems:"start"}}>
-
-                {/* ═══ COLUMNA PRINCIPAL ═══ */}
-                <div>
-
-                  {/* KPI Cards — 2 filas de 3 */}
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
-                    {[
-                      {lbl:"Productos",    val:products.length,                               icon:"📦", accent:"#22c55e", bg:"#f0fdf4"},
-                      {lbl:"Valor",        val:"$"+Math.round(totalVal/1000)+"K",             icon:"💰", accent:"#3b82f6", bg:"#eff6ff"},
-                      {lbl:"Categorías",   val:[...new Set(products.map(p=>p.categoria).filter(Boolean))].length, icon:"🏷️", accent:"#8b5cf6", bg:"#f5f3ff"},
-                      {lbl:"Stock Bajo",   val:alerts.filter(p=>p.stock>0).length,            icon:"⚠️", accent:"#f97316", bg:"#fff7ed"},
-                      {lbl:"Sin Stock",    val:products.filter(p=>p.stock===0).length,        icon:"🚨", accent:"#ef4444", bg:"#fef2f2"},
-                      {lbl:"Master DB",    val:masterProducts.length,                         icon:"🗄", accent:"#8b5cf6", bg:"#f5f3ff"},
-                    ].map(({lbl,val,icon,accent,bg})=>(
-                      <div key={lbl} style={{background:bg,borderRadius:14,padding:"14px 16px",border:`1.5px solid ${accent}22`,position:"relative",overflow:"hidden"}}>
-                        <div style={{position:"absolute",top:8,right:12,fontSize:22,opacity:.18}}>{icon}</div>
-                        <div style={{fontSize:11,fontWeight:700,color:"var(--gray-500)",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{lbl}</div>
-                        <div style={{fontSize:28,fontWeight:900,color:accent,lineHeight:1}}>{val}</div>
-                      </div>
-                    ))}
+              {/* ── KPIs: 2 columnas en móvil, 3 en desktop ── */}
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(3,1fr)",gap:10,marginBottom:14}}>
+                {[
+                  {lbl:"Productos",  val:products.length,                                                    icon:"📦", ac:"#22c55e", bg:"#f0fdf4"},
+                  {lbl:"Valor",      val:"$"+Math.round(totalVal/1000)+"K",                                  icon:"💰", ac:"#3b82f6", bg:"#eff6ff"},
+                  {lbl:"Categorías", val:[...new Set(products.map(p=>p.categoria).filter(Boolean))].length,  icon:"🏷️", ac:"#8b5cf6", bg:"#f5f3ff"},
+                  {lbl:"Stock Bajo", val:alerts.filter(p=>p.stock>0).length,                                 icon:"⚠️", ac:"#f97316", bg:"#fff7ed"},
+                  {lbl:"Sin Stock",  val:products.filter(p=>p.stock===0).length,                             icon:"🚨", ac:"#ef4444", bg:"#fef2f2"},
+                  {lbl:"Master DB",  val:masterProducts.length,                                              icon:"🗄", ac:"#8b5cf6", bg:"#f5f3ff"},
+                ].map(({lbl,val,icon,ac,bg})=>(
+                  <div key={lbl} style={{background:bg,borderRadius:12,padding:isMobile?"12px 14px":"14px 16px",border:`1.5px solid ${ac}22`,position:"relative",overflow:"hidden"}}>
+                    <div style={{position:"absolute",top:8,right:10,fontSize:isMobile?18:22,opacity:.15}}>{icon}</div>
+                    <div style={{fontSize:10,fontWeight:700,color:"var(--gray-500)",textTransform:"uppercase",letterSpacing:.4,marginBottom:3,lineHeight:1.2}}>{lbl}</div>
+                    <div style={{fontSize:isMobile?22:28,fontWeight:900,color:ac,lineHeight:1}}>{val}</div>
                   </div>
+                ))}
+              </div>
 
-                  {/* Barra de salud del inventario */}
-                  {products.length > 0 && (()=>{
-                    const ok    = products.filter(p=>p.stock>p.minimo).length;
-                    const bajo  = alerts.filter(p=>p.stock>0).length;
-                    const cero  = products.filter(p=>p.stock===0).length;
-                    const total = products.length;
-                    return (
-                      <div style={{...S.card,marginBottom:16,padding:"16px 20px"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                          <div style={{fontWeight:700,fontSize:14,color:"var(--gray-800)"}}>📊 Salud del inventario</div>
-                          <div style={{fontSize:12,color:"var(--gray-400)"}}>{total} productos</div>
-                        </div>
-                        <div style={{height:10,borderRadius:99,background:"var(--gray-100)",overflow:"hidden",display:"flex"}}>
-                          <div style={{width:`${ok/total*100}%`,background:"#22c55e",transition:"width .5s"}}/>
-                          <div style={{width:`${bajo/total*100}%`,background:"#f97316",transition:"width .5s"}}/>
-                          <div style={{width:`${cero/total*100}%`,background:"#ef4444",transition:"width .5s"}}/>
-                        </div>
-                        <div style={{display:"flex",gap:16,marginTop:8}}>
-                          {[[ok,"OK","#22c55e"],[bajo,"Bajo","#f97316"],[cero,"Sin stock","#ef4444"]].map(([n,l,c])=>(
-                            <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11}}>
-                              <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block"}}/>
-                              <span style={{color:"var(--gray-500)"}}>{l}:</span>
-                              <span style={{fontWeight:700,color:c}}>{n}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Últimos movimientos */}
-                  <div style={S.card}>
-                    <div style={{fontWeight:700,fontSize:14,color:"var(--gray-900)",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
-                      <span>🕐</span> Últimos Movimientos
-                      {movements.length>0 && <span style={{marginLeft:"auto",fontSize:11,color:"var(--gray-400)",fontWeight:400}}>{movements.length} total</span>}
+              {/* ── Barra de salud ── */}
+              {products.length > 0 && (()=>{
+                const ok   = products.filter(p=>p.stock>p.minimo).length;
+                const bajo = alerts.filter(p=>p.stock>0).length;
+                const cero = products.filter(p=>p.stock===0).length;
+                const tot  = products.length;
+                return (
+                  <div style={{...S.card,marginBottom:14,padding:"14px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{fontWeight:700,fontSize:13,color:"var(--gray-800)"}}>📊 Salud del inventario</div>
+                      <div style={{fontSize:11,color:"var(--gray-400)"}}>{tot} productos</div>
                     </div>
-                    {movements.length===0
-                      ? <div style={{textAlign:"center",padding:"24px 0",color:"var(--gray-300)",fontSize:13}}>Sin movimientos aún</div>
-                      : movements.slice(0,5).map(m=>(
-                        <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid var(--gray-50)"}}>
-                          <div style={{width:30,height:30,borderRadius:8,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:m.tipo==="entrada"?"#dcfce7":"#fee2e2",fontSize:14}}>{m.tipo==="entrada"?"📥":"📤"}</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nombre}</div>
-                            <div style={{fontSize:10,color:"var(--gray-400)"}}>{fmtDt(m.fecha)}</div>
-                          </div>
-                          <span style={{fontWeight:800,fontSize:13,color:m.tipo==="entrada"?"var(--green-600)":"var(--red-500)",flexShrink:0}}>{m.tipo==="entrada"?"+":"-"}{m.cantidad}</span>
+                    <div style={{height:8,borderRadius:99,background:"var(--gray-100)",overflow:"hidden",display:"flex"}}>
+                      <div style={{width:`${ok/tot*100}%`,background:"#22c55e"}}/>
+                      <div style={{width:`${bajo/tot*100}%`,background:"#f97316"}}/>
+                      <div style={{width:`${cero/tot*100}%`,background:"#ef4444"}}/>
+                    </div>
+                    <div style={{display:"flex",gap:12,marginTop:6,flexWrap:"wrap"}}>
+                      {[[ok,"OK","#22c55e"],[bajo,"Bajo","#f97316"],[cero,"Sin stock","#ef4444"]].map(([n,l,c])=>(
+                        <div key={l} style={{display:"flex",alignItems:"center",gap:4,fontSize:11}}>
+                          <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block"}}/>
+                          <span style={{color:"var(--gray-500)"}}>{l}:</span>
+                          <span style={{fontWeight:700,color:c}}>{n}</span>
                         </div>
-                      ))
-                    }
+                      ))}
+                    </div>
                   </div>
+                );
+              })()}
+
+              {/* ── Layout adaptativo: stacked en móvil, 2 col en desktop ── */}
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 260px",gap:14,alignItems:"start"}}>
+
+                {/* Movimientos */}
+                <div style={S.card}>
+                  <div style={{fontWeight:700,fontSize:14,color:"var(--gray-900)",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+                    🕐 Últimos Movimientos
+                    {movements.length>0 && <span style={{marginLeft:"auto",fontSize:11,color:"var(--gray-400)",fontWeight:400}}>{movements.length} total</span>}
+                  </div>
+                  {movements.length===0
+                    ? <div style={{textAlign:"center",padding:"20px 0",color:"var(--gray-300)",fontSize:13}}>Sin movimientos aún</div>
+                    : movements.slice(0,5).map(m=>(
+                      <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid var(--gray-50)"}}>
+                        <div style={{width:28,height:28,borderRadius:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:m.tipo==="entrada"?"#dcfce7":"#fee2e2",fontSize:13}}>{m.tipo==="entrada"?"📥":"📤"}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nombre}</div>
+                          <div style={{fontSize:10,color:"var(--gray-400)"}}>{fmtDt(m.fecha)}</div>
+                        </div>
+                        <span style={{fontWeight:800,fontSize:13,color:m.tipo==="entrada"?"var(--green-600)":"var(--red-500)",flexShrink:0}}>{m.tipo==="entrada"?"+":"-"}{m.cantidad}</span>
+                      </div>
+                    ))
+                  }
                 </div>
 
-                {/* ═══ COLUMNA DERECHA: ALERTAS ═══ */}
-                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {/* Columna alertas + accesos — en móvil va completa debajo */}
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
 
-                  {/* Alertas de vencimiento compactas */}
+                  {/* Alertas vencimiento */}
                   {expiryAlerts.length > 0 && (
-                    <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,padding:"14px 16px"}}>
-                      <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
-                        ⏰ Vencimientos <span style={{marginLeft:"auto",background:"#f59e0b",color:"#fff",borderRadius:20,padding:"1px 8px",fontSize:11}}>{expiryAlerts.length}</span>
+                    <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:12,padding:"12px 14px"}}>
+                      <div style={{fontWeight:700,fontSize:12,color:"#92400e",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                        ⏰ Vencimientos <span style={{marginLeft:"auto",background:"#f59e0b",color:"#fff",borderRadius:20,padding:"1px 7px",fontSize:10}}>{expiryAlerts.length}</span>
                       </div>
-                      {expiryAlerts.slice(0,5).map(p=>{
-                        const s = expiryStatus(p.fechaVencimiento);
+                      {expiryAlerts.slice(0,4).map(p=>{
+                        const s=expiryStatus(p.fechaVencimiento);
                         return (
-                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #fde68a"}}>
-                            <span style={{fontSize:14,flexShrink:0}}>{s.icon}</span>
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderBottom:"1px solid #fde68a"}}>
+                            <span style={{fontSize:13,flexShrink:0}}>{s.icon}</span>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#92400e"}}>{p.nombre}</div>
                               <div style={{fontSize:10,color:"#b45309"}}>{s.label}</div>
@@ -825,31 +830,31 @@ export default function App() {
                           </div>
                         );
                       })}
-                      {expiryAlerts.length>5 && <div style={{fontSize:10,color:"#92400e",marginTop:6,textAlign:"center"}}>+{expiryAlerts.length-5} más</div>}
+                      {expiryAlerts.length>4 && <div style={{fontSize:10,color:"#92400e",marginTop:4,textAlign:"center"}}>+{expiryAlerts.length-4} más</div>}
                     </div>
                   )}
 
-                  {/* Alertas de stock compactas */}
+                  {/* Alertas stock */}
                   {alerts.length > 0 ? (
-                    <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:14,padding:"14px 16px"}}>
-                      <div style={{fontWeight:700,fontSize:13,color:"#991b1b",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
-                        🚨 Stock <span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:20,padding:"1px 8px",fontSize:11}}>{alerts.length}</span>
+                    <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"12px 14px"}}>
+                      <div style={{fontWeight:700,fontSize:12,color:"#991b1b",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+                        🚨 Stock crítico <span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:20,padding:"1px 7px",fontSize:10}}>{alerts.length}</span>
                       </div>
-                      {alerts.slice(0,6).map(p=>(
-                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #fee2e2"}}>
-                          <span style={{fontSize:13,flexShrink:0}}>{p.stock===0?"🔴":"🟡"}</span>
+                      {alerts.slice(0,5).map(p=>(
+                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderBottom:"1px solid #fee2e2"}}>
+                          <span style={{fontSize:12,flexShrink:0}}>{p.stock===0?"🔴":"🟡"}</span>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:p.stock===0?"#991b1b":"#92400e"}}>{p.nombre}</div>
                             <div style={{fontSize:10,color:"var(--gray-400)"}}>Stock: {p.stock} · Mín: {p.minimo}</div>
                           </div>
-                          {p.stock===0 && <span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#ef4444",borderRadius:4,padding:"2px 5px",flexShrink:0,whiteSpace:"nowrap"}}>PEDIR</span>}
+                          {p.stock===0 && <span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#ef4444",borderRadius:4,padding:"2px 4px",flexShrink:0}}>PEDIR</span>}
                         </div>
                       ))}
-                      {alerts.length>6 && <div style={{fontSize:10,color:"#991b1b",marginTop:6,textAlign:"center"}}>+{alerts.length-6} más</div>}
+                      {alerts.length>5 && <div style={{fontSize:10,color:"#991b1b",marginTop:4,textAlign:"center"}}>+{alerts.length-5} más</div>}
                     </div>
                   ) : (
-                    <div style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:14,padding:"14px 16px",textAlign:"center"}}>
-                      <div style={{fontSize:24,marginBottom:4}}>✅</div>
+                    <div style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:12,padding:"12px 14px",textAlign:"center"}}>
+                      <div style={{fontSize:22,marginBottom:4}}>✅</div>
                       <div style={{fontSize:12,fontWeight:600,color:"#166534"}}>Inventario OK</div>
                       <div style={{fontSize:10,color:"var(--green-600)",marginTop:2}}>Todo bien abastecido</div>
                     </div>
@@ -857,18 +862,20 @@ export default function App() {
 
                   {/* Accesos rápidos */}
                   {isConsultor && (
-                    <div style={{background:"var(--white)",border:"1.5px solid var(--gray-100)",borderRadius:14,padding:"14px 16px"}}>
-                      <div style={{fontWeight:700,fontSize:12,color:"var(--gray-500)",textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>Accesos rápidos</div>
-                      {[
-                        {lbl:"📷 Registrar",   fn:()=>setTab("registrar"),   bg:"#f0fdf4",c:"#166534"},
-                        {lbl:"↕ Movimiento",   fn:()=>setMovModal(true),     bg:"#eff6ff",c:"#1d4ed8"},
-                        {lbl:"🗺 Bodega",       fn:()=>setTab("bodega"),      bg:"#f5f3ff",c:"#7c3aed"},
-                        {lbl:"📈 Análisis",     fn:()=>setTab("analisis"),    bg:"#fff7ed",c:"#c2410c"},
-                      ].map(({lbl,fn,bg,c})=>(
-                        <button key={lbl} onClick={fn} style={{display:"block",width:"100%",padding:"8px 12px",marginBottom:6,background:bg,border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,color:c,textAlign:"left"}}>
-                          {lbl}
-                        </button>
-                      ))}
+                    <div style={{background:"var(--white)",border:"1.5px solid var(--gray-100)",borderRadius:12,padding:"12px 14px"}}>
+                      <div style={{fontWeight:700,fontSize:10,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Accesos rápidos</div>
+                      <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:"1fr 1fr",flexDirection:"column",gap:6}}>
+                        {[
+                          {lbl:"📷 Registrar", fn:()=>setTab("registrar"), bg:"#f0fdf4",c:"#166534"},
+                          {lbl:"↕ Movimiento", fn:()=>setMovModal(true),   bg:"#eff6ff",c:"#1d4ed8"},
+                          {lbl:"🗺 Bodega",     fn:()=>setTab("bodega"),    bg:"#f5f3ff",c:"#7c3aed"},
+                          {lbl:"📈 Análisis",   fn:()=>setTab("analisis"),  bg:"#fff7ed",c:"#c2410c"},
+                        ].map(({lbl,fn,bg,c})=>(
+                          <button key={lbl} onClick={fn} style={{padding:"8px 10px",background:bg,border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,color:c,textAlign:"left"}}>
+                            {lbl}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -876,7 +883,7 @@ export default function App() {
             </div>
           )}
 
-          {/* ════ REGISTRAR ════ */}
+                    {/* ════ REGISTRAR ════ */}
           {tab==="registrar" && isConsultor && (
             <div className="fadeUp">
               <div style={S.secH}>
@@ -980,20 +987,26 @@ export default function App() {
                           const st  = stOf(p);
                           const col = CAT_COLOR[p.categoria]||"#9ca3af";
                           return editId===p.id ? (
-                            <tr key={p.id} style={{background:"#f0fdf4"}}>
-                              <td style={S.td} colSpan={5}>
-                                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                                  {[["stock","Stock",editData.stock,70],["minimo","Mín",editData.minimo,60],["precioCompra","P.Compra",editData.precioCompra,100],["precioVenta","P.Venta",editData.precioVenta,100]].map(([k,lbl,v,w])=>(
+                            <tr key={p.id} id={"inv-row-"+p.id} style={{background:"#f0fdf4"}}>
+                              <td style={S.td} colSpan={6}>
+                                <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
+                                  {[["stock","Stock",editData.stock,65],["minimo","Mín",editData.minimo,55],["precioCompra","P.Compra",editData.precioCompra,95],["precioVenta","P.Venta",editData.precioVenta,95]].map(([k,lbl,v,w])=>(
                                     <div key={k}><div style={{fontSize:10,color:"var(--gray-500)",marginBottom:3}}>{lbl}</div>
                                     <input style={{...S.inp,width:w,padding:"7px 9px"}} type="number" value={v} onChange={e=>setEditData(d=>({...d,[k]:Number(e.target.value)}))}/></div>
                                   ))}
+                                  <div><div style={{fontSize:10,color:"var(--gray-500)",marginBottom:3}}>Lote</div>
+                                  <input style={{...S.inp,width:80,padding:"7px 9px"}} value={editData.lote||""} placeholder="L-001" onChange={e=>setEditData(d=>({...d,lote:e.target.value}))}/></div>
+                                  <div><div style={{fontSize:10,color:"var(--green-700)",fontWeight:700,marginBottom:3}}>📦 Armario</div>
+                                  <input style={{...S.inp,width:85,padding:"7px 9px",borderColor:"#86efac"}} value={editData.armario||""} placeholder="Ej: A1" onChange={e=>setEditData(d=>({...d,armario:e.target.value}))}/></div>
+                                  <div><div style={{fontSize:10,color:"var(--green-700)",fontWeight:700,marginBottom:3}}>📍 Segmento</div>
+                                  <input style={{...S.inp,width:95,padding:"7px 9px",borderColor:"#86efac"}} value={editData.segmento||""} placeholder="Ej: Fila-2" onChange={e=>setEditData(d=>({...d,segmento:e.target.value}))}/></div>
+                                  <div style={{display:"flex",gap:4,paddingBottom:1}}>
+                                    <button style={S.bSm("var(--green-600)")} onClick={()=>saveEdit(p)}>✅ Guardar</button>
+                                    <button style={S.bSm("var(--gray-100)","var(--gray-600)")} onClick={()=>setEditId(null)}>✖</button>
+                                  </div>
                                 </div>
                               </td>
-                              <td style={S.td}></td><td style={S.td}></td>
-                              <td style={S.td}><div style={{display:"flex",gap:4}}>
-                                <button style={S.bSm("var(--green-600)")} onClick={()=>saveEdit(p)}>✅</button>
-                                <button style={S.bSm("var(--gray-100)","var(--gray-600)")} onClick={()=>setEditId(null)}>✖</button>
-                              </div></td>
+                              <td style={S.td}></td>
                             </tr>
                           ) : (
                             <tr key={p.id}>
@@ -1148,11 +1161,37 @@ export default function App() {
                 return (
                   <div>
                     {sinUbicar.length > 0 && (
-                      <div style={{...S.card,background:"#fffbeb",border:"1.5px solid #fcd34d",marginBottom:16}}>
-                        <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:8}}>⚠️ {sinUbicar.length} producto{sinUbicar.length>1?"s":""} sin ubicación asignada</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:10}}>
+                          ⚠️ {sinUbicar.length} producto{sinUbicar.length>1?"s":""} sin ubicación — toca para asignar
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
                           {sinUbicar.map(p=>(
-                            <span key={p.id} style={{padding:"3px 10px",background:"#fef3c7",borderRadius:20,fontSize:11,color:"#92400e",fontWeight:600}}>{p.nombre}</span>
+                            <button key={p.id} onClick={()=>{
+                              setEditQuickId(p.id);
+                              setTab("inventario");
+                              // Abrir edición inline en inventario
+                              startEdit(p);
+                              setTimeout(()=>{
+                                document.getElementById("inv-row-"+p.id)?.scrollIntoView({behavior:"smooth",block:"center"});
+                              },400);
+                            }} style={{
+                              display:"flex",alignItems:"center",justifyContent:"space-between",
+                              padding:"10px 14px",background:"#fff",border:"1.5px solid #fcd34d",
+                              borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%",
+                              transition:"background .15s",
+                            }}
+                            onMouseEnter={e=>e.currentTarget.style.background="#fef3c7"}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}
+                            >
+                              <div>
+                                <div style={{fontWeight:600,fontSize:13,color:"#92400e"}}>{p.nombre}</div>
+                                <div style={{fontSize:11,color:"#b45309",marginTop:2}}>Stock: {p.stock} · {p.categoria||"Sin categoría"}</div>
+                              </div>
+                              <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#f59e0b",borderRadius:20,padding:"3px 10px",flexShrink:0,whiteSpace:"nowrap"}}>
+                                📍 Asignar →
+                              </span>
+                            </button>
                           ))}
                         </div>
                       </div>
