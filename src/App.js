@@ -340,6 +340,7 @@ export default function App() {
   const [inviteRole,    setInviteRole]    = useState("consultor");
   const [inviteModal,   setInviteModal]   = useState(false);
   const [teamModal,     setTeamModal]     = useState(false);
+  const [menuOpen,      setMenuOpen]      = useState(false);
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -672,20 +673,78 @@ export default function App() {
           <div style={S.logoIcon}>🏪</div>
           Invent<span style={{color:"var(--green-500)"}}>App</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          {/* Selector de proyecto */}
+        <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
+          {/* Selector de proyecto — siempre visible */}
           {projects.length > 0 && (
-            <select style={{...S.inp,width:"auto",fontSize:12,padding:"6px 10px"}} value={currentProject?.id||""} onChange={e=>{const p=projects.find(x=>x.id===e.target.value);if(p)setCurrentProject(p);}}>
+            <select style={{...S.inp,width:"auto",maxWidth:140,fontSize:12,padding:"6px 10px"}} value={currentProject?.id||""} onChange={e=>{const p=projects.find(x=>x.id===e.target.value);if(p)setCurrentProject(p);}}>
               {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
-          {isConsultor && currentProject && <button style={S.bSm("var(--blue-100)","var(--blue-500)")} onClick={()=>setInviteModal(true)}>👥 Invitar</button>}{isConsultor && currentProject && <button style={S.bSm("#ede9fe","#7c3aed")} onClick={()=>{loadTeamMembers();setTeamModal(true);}}>⚙️ Equipo</button>}{isConsultor && currentProject && <button style={S.bSm("#fef3c7","#92400e")} onClick={()=>setClientModal(true)}>+ Cliente</button>}{isConsultor && <button style={S.bSm("var(--green-100)","var(--green-800)")} onClick={()=>setProjModal(true)}>+ Proyecto</button>}
-          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block"}}/>
-            {userDoc?.name || user.email?.split("@")[0]}
-            <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 7px",borderRadius:20,fontWeight:600}}>{userDoc?.role||"consultor"}</span>
+
+          {/* Info usuario — solo en desktop */}
+          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}} className="desktop-only">
+            <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",flexShrink:0}}/>
+            <span style={{maxWidth:90,overflow:"hidden",textOverflow:"ellipsis"}}>{userDoc?.name||user.email?.split("@")[0]}</span>
+            <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 6px",borderRadius:20,fontWeight:700,flexShrink:0}}>{userDoc?.role||"consultor"}</span>
           </div>
-          <button style={S.bSm("var(--red-100)","#991b1b")} onClick={()=>signOut(auth)}>Salir</button>
+
+          {/* Botón hamburguesa ☰ */}
+          <button
+            onClick={()=>setMenuOpen(o=>!o)}
+            style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",padding:0,flexShrink:0}}
+            aria-label="Menú"
+          >
+            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+          </button>
+
+          {/* Dropdown menu */}
+          {menuOpen && (
+            <>
+              {/* Overlay para cerrar al tocar fuera */}
+              <div style={{position:"fixed",inset:0,zIndex:149}} onClick={()=>setMenuOpen(false)}/>
+              <div style={{
+                position:"absolute",top:"calc(100% + 8px)",right:0,
+                background:"var(--white)",borderRadius:12,
+                boxShadow:"0 8px 32px rgba(0,0,0,0.15)",
+                border:"1px solid var(--gray-200)",
+                minWidth:200,zIndex:150,overflow:"hidden",
+              }}>
+                {/* Info usuario en mobile */}
+                <div style={{padding:"12px 16px",borderBottom:"1px solid var(--gray-100)",background:"var(--green-50)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",flexShrink:0}}/>
+                    <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{userDoc?.name||user.email?.split("@")[0]}</span>
+                    <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 7px",borderRadius:20,fontWeight:700,flexShrink:0}}>{userDoc?.role||"consultor"}</span>
+                  </div>
+                  {currentProject && <div style={{fontSize:11,color:"var(--gray-400)",marginTop:4,paddingLeft:16}}>📁 {currentProject.name}</div>}
+                </div>
+
+                {/* Opciones */}
+                {[
+                  isConsultor && currentProject && { label:"👥 Invitar colega",  color:"#1d4ed8", bg:"#eff6ff", fn:()=>{setMenuOpen(false);setInviteModal(true);} },
+                  isConsultor && currentProject && { label:"⚙️ Gestión equipo",  color:"#7c3aed", bg:"#f5f3ff", fn:()=>{setMenuOpen(false);loadTeamMembers();setTeamModal(true);} },
+                  isConsultor && currentProject && { label:"👤 + Cliente",        color:"#92400e", bg:"#fffbeb", fn:()=>{setMenuOpen(false);setClientModal(true);} },
+                  isConsultor &&                  { label:"📁 + Proyecto",        color:"#166534", bg:"#f0fdf4", fn:()=>{setMenuOpen(false);setProjModal(true);} },
+                  { label:"🚪 Cerrar sesión", color:"#991b1b", bg:"#fef2f2", fn:()=>{setMenuOpen(false);signOut(auth);} },
+                ].filter(Boolean).map((item,i) => (
+                  <button key={i} onClick={item.fn} style={{
+                    display:"flex",alignItems:"center",width:"100%",padding:"12px 16px",
+                    background:menuOpen?"white":"white",border:"none",borderBottom:"1px solid var(--gray-50)",
+                    cursor:"pointer",fontSize:14,fontWeight:500,color:item.color,
+                    textAlign:"left",gap:0,
+                    transition:"background .1s",
+                  }}
+                  onMouseEnter={e=>e.currentTarget.style.background=item.bg}
+                  onMouseLeave={e=>e.currentTarget.style.background="white"}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </header>
 
