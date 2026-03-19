@@ -25,6 +25,7 @@ const emptyForm = () => ({
   nombre:"", codigo:"", codigoBarras:"", categoria:"", envase:"",
   stock:"", minimo:"5", precioCompra:"", precioVenta:"",
   proveedor:"", unidad:"unid", nota:"", fechaVencimiento:"",
+  lote:"", armario:"", segmento:"",
 });
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -340,7 +341,7 @@ export default function App() {
   const [inviteRole,    setInviteRole]    = useState("consultor");
   const [inviteModal,   setInviteModal]   = useState(false);
   const [teamModal,     setTeamModal]     = useState(false);
-  const [menuOpen,      setMenuOpen]      = useState(false);
+  const [sidebarOpen,   setSidebarOpen]   = useState(false);
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -552,6 +553,9 @@ export default function App() {
       proveedor:       prod.proveedor     || f.proveedor,
       nota:            prod.nota          || f.nota,
       fechaVencimiento: prod.fechaVencimiento || f.fechaVencimiento,
+      lote:             prod.lote             || f.lote,
+      armario:          prod.armario          || f.armario,
+      segmento:         prod.segmento         || f.segmento,
     }));
     setTimeout(()=>document.getElementById("form-nombre")?.scrollIntoView({behavior:"smooth",block:"center"}),300);
   }
@@ -633,8 +637,8 @@ export default function App() {
 
   // ── CSV ──
   function exportCSV() {
-    const rows = products.map(p=>[p.nombre,p.codigo,p.codigoBarras||"",p.categoria,p.envase,p.stock,p.minimo,p.precioCompra,p.precioVenta,p.proveedor,p.unidad,p.fechaVencimiento||""].join(","));
-    const csv  = ["Nombre,Codigo,CodigoBarras,Categoria,Envase,Stock,Minimo,PCompra,PVenta,Proveedor,Unidad,FechaVencimiento",...rows].join("\n");
+    const rows = products.map(p=>[p.nombre,p.codigo,p.codigoBarras||"",p.categoria,p.envase,p.stock,p.minimo,p.precioCompra,p.precioVenta,p.proveedor,p.unidad,p.fechaVencimiento||"",p.lote||"",p.armario||"",p.segmento||""].join(","));
+    const csv  = ["Nombre,Codigo,CodigoBarras,Categoria,Envase,Stock,Minimo,PCompra,PVenta,Proveedor,Unidad,FechaVencimiento,Lote,Armario,Segmento",...rows].join("\n");
     const a = Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`inventario_${new Date().toISOString().slice(0,10)}.csv`});
     a.click(); showToast("📥 CSV exportado","success");
   }
@@ -662,7 +666,7 @@ export default function App() {
 
   // ── Tabs según rol ──
   const allTabs = isConsultor
-    ? [["dashboard","📊 Dashboard"],["registrar","📷 Registrar"],["inventario","📦 Inventario"],["movimientos","↕ Movimientos"],["diferencial","📋 Diferencial"],["master","🗄 Master DB"],["analisis","📈 Análisis"]]
+    ? [["dashboard","📊 Dashboard"],["registrar","📷 Registrar"],["inventario","📦 Inventario"],["movimientos","↕ Movimientos"],["diferencial","📋 Diferencial"],["master","🗄 Master DB"],["bodega","🗺 Bodega"],["analisis","📈 Análisis"]]
     : [["dashboard","📊 Dashboard"],["inventario","📦 Inventario"],["analisis","📈 Análisis"]];
 
   return (
@@ -673,79 +677,12 @@ export default function App() {
           <div style={S.logoIcon}>🏪</div>
           Invent<span style={{color:"var(--green-500)"}}>App</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
-          {/* Selector de proyecto — siempre visible */}
-          {projects.length > 0 && (
-            <select style={{...S.inp,width:"auto",maxWidth:140,fontSize:12,padding:"6px 10px"}} value={currentProject?.id||""} onChange={e=>{const p=projects.find(x=>x.id===e.target.value);if(p)setCurrentProject(p);}}>
-              {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          )}
-
-          {/* Info usuario — solo en desktop */}
-          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}} className="desktop-only">
-            <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",flexShrink:0}}/>
-            <span style={{maxWidth:90,overflow:"hidden",textOverflow:"ellipsis"}}>{userDoc?.name||user.email?.split("@")[0]}</span>
-            <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 6px",borderRadius:20,fontWeight:700,flexShrink:0}}>{userDoc?.role||"consultor"}</span>
-          </div>
-
-          {/* Botón hamburguesa ☰ */}
-          <button
-            onClick={()=>setMenuOpen(o=>!o)}
-            style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",padding:0,flexShrink:0}}
-            aria-label="Menú"
-          >
-            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
-            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
-            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
-          </button>
-
-          {/* Dropdown menu */}
-          {menuOpen && (
-            <>
-              {/* Overlay para cerrar al tocar fuera */}
-              <div style={{position:"fixed",inset:0,zIndex:149}} onClick={()=>setMenuOpen(false)}/>
-              <div style={{
-                position:"absolute",top:"calc(100% + 8px)",right:0,
-                background:"var(--white)",borderRadius:12,
-                boxShadow:"0 8px 32px rgba(0,0,0,0.15)",
-                border:"1px solid var(--gray-200)",
-                minWidth:200,zIndex:150,overflow:"hidden",
-              }}>
-                {/* Info usuario en mobile */}
-                <div style={{padding:"12px 16px",borderBottom:"1px solid var(--gray-100)",background:"var(--green-50)"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",flexShrink:0}}/>
-                    <span style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{userDoc?.name||user.email?.split("@")[0]}</span>
-                    <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 7px",borderRadius:20,fontWeight:700,flexShrink:0}}>{userDoc?.role||"consultor"}</span>
-                  </div>
-                  {currentProject && <div style={{fontSize:11,color:"var(--gray-400)",marginTop:4,paddingLeft:16}}>📁 {currentProject.name}</div>}
-                </div>
-
-                {/* Opciones */}
-                {[
-                  isConsultor && currentProject && { label:"👥 Invitar colega",  color:"#1d4ed8", bg:"#eff6ff", fn:()=>{setMenuOpen(false);setInviteModal(true);} },
-                  isConsultor && currentProject && { label:"⚙️ Gestión equipo",  color:"#7c3aed", bg:"#f5f3ff", fn:()=>{setMenuOpen(false);loadTeamMembers();setTeamModal(true);} },
-                  isConsultor && currentProject && { label:"👤 + Cliente",        color:"#92400e", bg:"#fffbeb", fn:()=>{setMenuOpen(false);setClientModal(true);} },
-                  isConsultor &&                  { label:"📁 + Proyecto",        color:"#166534", bg:"#f0fdf4", fn:()=>{setMenuOpen(false);setProjModal(true);} },
-                  { label:"🚪 Cerrar sesión", color:"#991b1b", bg:"#fef2f2", fn:()=>{setMenuOpen(false);signOut(auth);} },
-                ].filter(Boolean).map((item,i) => (
-                  <button key={i} onClick={item.fn} style={{
-                    display:"flex",alignItems:"center",width:"100%",padding:"12px 16px",
-                    background:menuOpen?"white":"white",border:"none",borderBottom:"1px solid var(--gray-50)",
-                    cursor:"pointer",fontSize:14,fontWeight:500,color:item.color,
-                    textAlign:"left",gap:0,
-                    transition:"background .1s",
-                  }}
-                  onMouseEnter={e=>e.currentTarget.style.background=item.bg}
-                  onMouseLeave={e=>e.currentTarget.style.background="white"}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        {/* ── Botón ☰ abre sidebar ── */}
+        <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",padding:0,flexShrink:0}} aria-label="Menú">
+          <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+          <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+          <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+        </button>
       </header>
 
       {/* TABS */}
@@ -881,6 +818,30 @@ export default function App() {
                     <label style={S.lbl}>📅 Fecha de Vencimiento</label>
                     <input style={S.inp} type="date" value={form.fechaVencimiento} onChange={e=>setForm(f=>({...f,fechaVencimiento:e.target.value}))}/>
                     {form.fechaVencimiento && <ExpiryBadge fecha={form.fechaVencimiento} />}
+                  </div>
+                  {/* LOTE */}
+                  <div style={S.fGrp}>
+                    <label style={S.lbl}>🏷️ Lote</label>
+                    <input style={S.inp} value={form.lote} placeholder="Ej: L-2024-03A" onChange={e=>setForm(f=>({...f,lote:e.target.value}))}/>
+                  </div>
+                  {/* UBICACIÓN: ARMARIO + SEGMENTO */}
+                  <div style={{...S.fGrp,gridColumn:"1/-1"}}>
+                    <label style={S.lbl}>📦 Ubicación en bodega</label>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      <div style={S.fGrp}>
+                        <label style={{fontSize:11,color:"var(--gray-400)",fontWeight:600}}>Armario / Estante</label>
+                        <input style={S.inp} value={form.armario} placeholder="Ej: A1, B2, Caja-3" onChange={e=>setForm(f=>({...f,armario:e.target.value}))}/>
+                      </div>
+                      <div style={S.fGrp}>
+                        <label style={{fontSize:11,color:"var(--gray-400)",fontWeight:600}}>Segmento / Posición</label>
+                        <input style={S.inp} value={form.segmento} placeholder="Ej: Fila-1, Nivel-2, Izq" onChange={e=>setForm(f=>({...f,segmento:e.target.value}))}/>
+                      </div>
+                    </div>
+                    {(form.armario||form.segmento) && (
+                      <div style={{marginTop:6,padding:"6px 12px",background:"var(--green-50)",borderRadius:8,fontSize:12,color:"var(--green-700)",fontWeight:600}}>
+                        📍 {form.armario||"—"} › {form.segmento||"—"}
+                      </div>
+                    )}
                   </div>
                   <div style={{...S.fGrp,gridColumn:"1/-1"}}><label style={S.lbl}>Nota</label><textarea style={{...S.inp,minHeight:60,resize:"vertical"}} value={form.nota} placeholder="Observaciones..." onChange={e=>setForm(f=>({...f,nota:e.target.value}))}/></div>
                 </div>
@@ -1066,6 +1027,97 @@ export default function App() {
             </div>
           )}
 
+          {/* ════ MAPA DE BODEGA ════ */}
+          {tab==="bodega" && isConsultor && (
+            <div className="fadeUp">
+              <div style={S.secH}>
+                <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Visualización de armarios, estantes y ubicación de productos</div></div>
+              </div>
+              {(() => {
+                const byArmario = {};
+                products.forEach(p => {
+                  const arm = p.armario || "__sin__";
+                  if (!byArmario[arm]) byArmario[arm] = [];
+                  byArmario[arm].push(p);
+                });
+                const ubicados   = Object.keys(byArmario).filter(k=>k!=="__sin__").sort();
+                const sinUbicar  = byArmario["__sin__"] || [];
+
+                return (
+                  <div>
+                    {sinUbicar.length > 0 && (
+                      <div style={{...S.card,background:"#fffbeb",border:"1.5px solid #fcd34d",marginBottom:16}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:8}}>⚠️ {sinUbicar.length} producto{sinUbicar.length>1?"s":""} sin ubicación asignada</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                          {sinUbicar.map(p=>(
+                            <span key={p.id} style={{padding:"3px 10px",background:"#fef3c7",borderRadius:20,fontSize:11,color:"#92400e",fontWeight:600}}>{p.nombre}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {ubicados.length===0 && sinUbicar.length===0 && (
+                      <div style={{...S.card,textAlign:"center",padding:"48px 20px"}}>
+                        <div style={{fontSize:48,marginBottom:12}}>🗺</div>
+                        <div style={{fontWeight:700,fontSize:18,color:"var(--gray-800)",marginBottom:8}}>El mapa está vacío</div>
+                        <div style={{color:"var(--gray-500)",marginBottom:20}}>Registra productos y asígnales Armario y Segmento para visualizarlos aquí</div>
+                        <button style={S.btn()} onClick={()=>setTab("registrar")}>📷 Ir a Registrar</button>
+                      </div>
+                    )}
+
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+                      {ubicados.map(armario => {
+                        const items = byArmario[armario];
+                        const bySegmento = {};
+                        items.forEach(p => {
+                          const seg = p.segmento || "General";
+                          if (!bySegmento[seg]) bySegmento[seg] = [];
+                          bySegmento[seg].push(p);
+                        });
+                        const segs = Object.keys(bySegmento).sort();
+                        return (
+                          <div key={armario} style={{background:"var(--white)",borderRadius:16,overflow:"hidden",boxShadow:"var(--shadow-sm)",border:"1.5px solid var(--gray-200)"}}>
+                            <div style={{background:"var(--green-700)",padding:"12px 16px",display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{fontSize:22}}>🗄</span>
+                              <div>
+                                <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>{armario}</div>
+                                <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>{items.length} producto{items.length>1?"s":""}</div>
+                              </div>
+                            </div>
+                            <div style={{padding:12,display:"flex",flexDirection:"column",gap:8}}>
+                              {segs.map((seg,si) => (
+                                <div key={seg} style={{border:"1.5px solid var(--gray-100)",borderRadius:10,overflow:"hidden"}}>
+                                  <div style={{background:"var(--green-50)",padding:"6px 12px",fontSize:11,fontWeight:700,color:"var(--green-700)",borderBottom:"1px solid var(--gray-100)",display:"flex",alignItems:"center",gap:6}}>
+                                    <span style={{background:"var(--green-600)",color:"#fff",width:18,height:18,borderRadius:5,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{si+1}</span>
+                                    {seg}
+                                    <span style={{marginLeft:"auto",fontSize:10,color:"var(--gray-400)"}}>{bySegmento[seg].length} ítem{bySegmento[seg].length>1?"s":""}</span>
+                                  </div>
+                                  <div style={{padding:"8px 12px",display:"flex",flexWrap:"wrap",gap:5}}>
+                                    {bySegmento[seg].map(p => {
+                                      const st  = p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
+                                      const stc = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
+                                      return (
+                                        <div key={p.id} title={`Stock: ${p.stock} | Lote: ${p.lote||"—"} | Vence: ${p.fechaVencimiento||"—"}`}
+                                          style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:st,color:stc,cursor:"default"}}>
+                                          {p.nombre.length>22?p.nombre.slice(0,20)+"…":p.nombre}
+                                          <span style={{marginLeft:4,opacity:.75}}>×{p.stock}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* ════ ANÁLISIS ════ */}
           {tab==="analisis" && (
             <div className="fadeUp">
@@ -1155,6 +1207,85 @@ export default function App() {
         </div>
       )}
 
+
+      {/* ══════════════════════════════════════════
+           SIDEBAR PRINCIPAL (estilo H&M)
+      ══════════════════════════════════════════ */}
+      {sidebarOpen && (
+        <>
+          {/* Overlay */}
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300}} onClick={()=>setSidebarOpen(false)}/>
+
+          {/* Panel */}
+          <div style={{position:"fixed",top:0,left:0,bottom:0,width:"min(88vw,360px)",background:"var(--white)",zIndex:301,display:"flex",flexDirection:"column",boxShadow:"4px 0 32px rgba(0,0,0,0.18)",overflowY:"auto"}}>
+
+            {/* Header del sidebar */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 20px",borderBottom:"1.5px solid var(--gray-100)",background:"var(--green-700)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:32,height:32,background:"rgba(255,255,255,0.2)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🪴</div>
+                <div>
+                  <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>Invent<span style={{color:"#86efac"}}>App</span></div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>{userDoc?.name||user.email?.split("@")[0]} · <span style={{fontWeight:700}}>{userDoc?.role||"consultor"}</span></div>
+                </div>
+              </div>
+              <button onClick={()=>setSidebarOpen(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+            </div>
+
+            <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+
+              {/* ── Columna 1: Proyectos ── */}
+              <div style={{width:110,background:"var(--green-50)",borderRight:"1px solid var(--gray-100)",padding:"12px 0",flexShrink:0,overflowY:"auto"}}>
+                <div style={{fontSize:9,fontWeight:800,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5,padding:"0 12px 8px"}}>Proyectos</div>
+                {projects.map(p=>(
+                  <button key={p.id} onClick={()=>{setCurrentProject(p);setSidebarOpen(false);}} style={{display:"block",width:"100%",padding:"10px 12px",background:currentProject?.id===p.id?"var(--green-100)":"none",border:"none",borderLeft:`3px solid ${currentProject?.id===p.id?"var(--green-600)":"transparent"}`,cursor:"pointer",textAlign:"left",fontSize:12,fontWeight:currentProject?.id===p.id?700:500,color:currentProject?.id===p.id?"var(--green-800)":"var(--gray-600)",lineHeight:1.3,wordBreak:"break-word"}}>
+                    {p.name}
+                  </button>
+                ))}
+                {isConsultor && (
+                  <button onClick={()=>{setSidebarOpen(false);setProjModal(true);}} style={{display:"flex",alignItems:"center",gap:4,width:"100%",padding:"10px 12px",background:"none",border:"none",borderLeft:"3px solid transparent",cursor:"pointer",fontSize:12,color:"var(--green-700)",fontWeight:600,marginTop:4}}>
+                    <span style={{fontSize:16}}>+</span> Nuevo
+                  </button>
+                )}
+              </div>
+
+              {/* ── Columna 2: Navegación ── */}
+              <div style={{flex:1,padding:"12px 0",overflowY:"auto"}}>
+                <div style={{fontSize:9,fontWeight:800,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5,padding:"0 16px 8px"}}>Navegación</div>
+                {allTabs.map(([id,lbl])=>(
+                  <button key={id} onClick={()=>{setTab(id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:tab===id?"var(--green-50)":"none",border:"none",borderLeft:`3px solid ${tab===id?"var(--green-600)":"transparent"}`,cursor:"pointer",fontSize:13,fontWeight:tab===id?700:500,color:tab===id?"var(--green-800)":"var(--gray-700)",textAlign:"left"}}>
+                    {lbl}
+                  </button>
+                ))}
+
+                {/* ── Divisor Acciones ── */}
+                <div style={{borderTop:"1px solid var(--gray-100)",margin:"12px 0"}}/>
+                <div style={{fontSize:9,fontWeight:800,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5,padding:"0 16px 8px"}}>Acciones</div>
+
+                {isConsultor && currentProject && (
+                  <button onClick={()=>{setSidebarOpen(false);setInviteModal(true);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:"none",border:"none",borderLeft:"3px solid transparent",cursor:"pointer",fontSize:13,fontWeight:500,color:"#1d4ed8",textAlign:"left"}}>
+                    👥 Invitar colega
+                  </button>
+                )}
+                {isConsultor && currentProject && (
+                  <button onClick={()=>{setSidebarOpen(false);loadTeamMembers();setTeamModal(true);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:"none",border:"none",borderLeft:"3px solid transparent",cursor:"pointer",fontSize:13,fontWeight:500,color:"#7c3aed",textAlign:"left"}}>
+                    ⚙️ Gestión equipo
+                  </button>
+                )}
+                {isConsultor && currentProject && (
+                  <button onClick={()=>{setSidebarOpen(false);setClientModal(true);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:"none",border:"none",borderLeft:"3px solid transparent",cursor:"pointer",fontSize:13,fontWeight:500,color:"#92400e",textAlign:"left"}}>
+                    👤 + Cliente
+                  </button>
+                )}
+
+                <div style={{borderTop:"1px solid var(--gray-100)",margin:"12px 0"}}/>
+                <button onClick={()=>{setSidebarOpen(false);signOut(auth);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:"none",border:"none",borderLeft:"3px solid transparent",cursor:"pointer",fontSize:13,fontWeight:500,color:"#991b1b",textAlign:"left"}}>
+                  🚪 Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ════ MODAL GESTIÓN DE EQUIPO ════ */}
       {teamModal && (
