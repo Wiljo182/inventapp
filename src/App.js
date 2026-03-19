@@ -21,6 +21,32 @@ const CAT_COLOR = {
   "Frutas y Verduras":"#22c55e","Condimentos":"#eab308","Otro":"#9ca3af",
 };
 
+// Colores por armario (se ciclan si hay más de 10)
+const ARM_COLORS = [
+  {bg:"#166534",text:"#fff",light:"#dcfce7",border:"#86efac"},  // verde oscuro
+  {bg:"#1d4ed8",text:"#fff",light:"#dbeafe",border:"#93c5fd"},  // azul
+  {bg:"#7c3aed",text:"#fff",light:"#ede9fe",border:"#c4b5fd"},  // violeta
+  {bg:"#b45309",text:"#fff",light:"#fef3c7",border:"#fcd34d"},  // ámbar
+  {bg:"#be123c",text:"#fff",light:"#ffe4e6",border:"#fda4af"},  // rosa
+  {bg:"#0e7490",text:"#fff",light:"#cffafe",border:"#67e8f9"},  // cyan
+  {bg:"#a16207",text:"#fff",light:"#fef9c3",border:"#fde047"},  // amarillo
+  {bg:"#065f46",text:"#fff",light:"#d1fae5",border:"#6ee7b7"},  // esmeralda
+  {bg:"#5b21b6",text:"#fff",light:"#ede9fe",border:"#a78bfa"},  // púrpura
+  {bg:"#92400e",text:"#fff",light:"#ffedd5",border:"#fdba74"},  // naranja
+];
+
+// Colores pastel para segmentos (se ciclan)
+const SEG_COLORS = [
+  {bg:"#dbeafe",border:"#93c5fd",text:"#1e40af",num:"#1d4ed8"},
+  {bg:"#ede9fe",border:"#c4b5fd",text:"#5b21b6",num:"#7c3aed"},
+  {bg:"#dcfce7",border:"#86efac",text:"#14532d",num:"#16a34a"},
+  {bg:"#fef3c7",border:"#fcd34d",text:"#78350f",num:"#b45309"},
+  {bg:"#ffe4e6",border:"#fda4af",text:"#9f1239",num:"#be123c"},
+  {bg:"#cffafe",border:"#67e8f9",text:"#164e63",num:"#0e7490"},
+  {bg:"#fce7f3",border:"#f9a8d4",text:"#831843",num:"#be185d"},
+  {bg:"#d1fae5",border:"#6ee7b7",text:"#064e3b",num:"#059669"},
+];
+
 const emptyForm = () => ({
   nombre:"", codigo:"", codigoBarras:"", categoria:"", envase:"",
   stock:"", minimo:"5", precioCompra:"", precioVenta:"",
@@ -73,14 +99,14 @@ const S = {
   // Layout
   page:    { fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif", background:"var(--gray-50)", minHeight:"100vh" },
   // Header
-  hdr:     { background:"var(--white)", borderBottom:"1.5px solid var(--gray-200)", padding:"0 20px", display:"flex", alignItems:"center", justifyContent:"space-between", height:60, position:"sticky", top:0, zIndex:50, boxShadow:"0 1px 8px rgba(0,0,0,0.06)" },
+  hdr:     { background:"var(--white)", borderBottom:"1.5px solid var(--gray-200)", padding:"0 12px", display:"flex", alignItems:"center", justifyContent:"space-between", height:56, position:"sticky", top:0, zIndex:50, boxShadow:"0 1px 8px rgba(0,0,0,0.06)", overflow:"hidden", minWidth:0 },
   logo:    { fontWeight:800, fontSize:20, color:"var(--green-700)", display:"flex", alignItems:"center", gap:8 },
   logoIcon:{ width:32, height:32, background:"linear-gradient(135deg,#22c55e,#16a34a)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 },
   // Tabs
   tabs:    { background:"var(--white)", borderBottom:"1.5px solid var(--gray-200)", display:"flex", padding:"0 20px", overflowX:"auto", gap:2 },
   tab:     a => ({ padding:"14px 16px", cursor:"pointer", fontSize:13, fontWeight:600, color:a?"var(--green-700)":"var(--gray-500)", background:"none", border:"none", borderBottom:a?"2.5px solid var(--green-600)":"2.5px solid transparent", whiteSpace:"nowrap", transition:"all .15s" }),
   // Main
-  main:    { maxWidth:1100, margin:"0 auto", padding:"24px 16px" },
+  main:    { maxWidth:1100, margin:"0 auto", padding:"16px 12px" },
   // Cards
   card:    { background:"var(--white)", borderRadius:"var(--radius-lg)", padding:24, boxShadow:"var(--shadow-sm)", border:"1px solid var(--gray-200)", marginBottom:20 },
   cardSm:  { background:"var(--white)", borderRadius:"var(--radius)", padding:20, boxShadow:"var(--shadow-sm)", border:"1px solid var(--gray-200)" },
@@ -344,6 +370,7 @@ export default function App() {
   const [sidebarOpen,   setSidebarOpen]   = useState(false);
   const [isMobile,      setIsMobile]      = useState(window.innerWidth < 640);
   const [editQuickId,   setEditQuickId]   = useState(null);  // edición rápida desde bodega
+  const [armarioVista,  setArmarioVista]  = useState(null);  // vista ampliada de armario
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -697,14 +724,14 @@ export default function App() {
         {/* Proyecto activo + usuario */}
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           {currentProject && (
-            <div style={{fontSize:12,background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:20,padding:"4px 12px",color:"var(--green-700)",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            <div style={{fontSize:11,background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:20,padding:"3px 10px",color:"var(--green-700)",fontWeight:600,maxWidth:"clamp(60px,22vw,150px)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
               📁 {currentProject.name}
             </div>
           )}
-          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:5}}>
-            <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green-500)",display:"inline-block"}}/>
-            <span style={{maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{userDoc?.name||user.email?.split("@")[0]}</span>
-            <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 6px",borderRadius:20,fontWeight:700}}>{userDoc?.role||"consultor"}</span>
+          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:4,minWidth:0,overflow:"hidden"}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",flexShrink:0}}/>
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,maxWidth:"clamp(50px,18vw,120px)"}}>{userDoc?.name||user.email?.split("@")[0]}</span>
+            <span style={{fontSize:9,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 5px",borderRadius:20,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{userDoc?.role||"consultor"}</span>
           </div>
         </div>
       </header>
@@ -1146,7 +1173,7 @@ export default function App() {
           {tab==="bodega" && isConsultor && (
             <div className="fadeUp">
               <div style={S.secH}>
-                <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Visualización de armarios, estantes y ubicación de productos</div></div>
+                <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Toca un armario para ver detalle completo</div></div>
               </div>
               {(() => {
                 const byArmario = {};
@@ -1155,11 +1182,12 @@ export default function App() {
                   if (!byArmario[arm]) byArmario[arm] = [];
                   byArmario[arm].push(p);
                 });
-                const ubicados   = Object.keys(byArmario).filter(k=>k!=="__sin__").sort();
-                const sinUbicar  = byArmario["__sin__"] || [];
+                const ubicados  = Object.keys(byArmario).filter(k=>k!=="__sin__").sort();
+                const sinUbicar = byArmario["__sin__"] || [];
 
                 return (
                   <div>
+                    {/* ── Sin ubicar ── */}
                     {sinUbicar.length > 0 && (
                       <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
                         <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:10}}>
@@ -1168,29 +1196,16 @@ export default function App() {
                         <div style={{display:"flex",flexDirection:"column",gap:6}}>
                           {sinUbicar.map(p=>(
                             <button key={p.id} onClick={()=>{
-                              setEditQuickId(p.id);
-                              setTab("inventario");
-                              // Abrir edición inline en inventario
-                              startEdit(p);
-                              setTimeout(()=>{
-                                document.getElementById("inv-row-"+p.id)?.scrollIntoView({behavior:"smooth",block:"center"});
-                              },400);
-                            }} style={{
-                              display:"flex",alignItems:"center",justifyContent:"space-between",
-                              padding:"10px 14px",background:"#fff",border:"1.5px solid #fcd34d",
-                              borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%",
-                              transition:"background .15s",
-                            }}
+                              setEditQuickId(p.id); setTab("inventario"); startEdit(p);
+                              setTimeout(()=>document.getElementById("inv-row-"+p.id)?.scrollIntoView({behavior:"smooth",block:"center"}),400);
+                            }} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fff",border:"1.5px solid #fcd34d",borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%"}}
                             onMouseEnter={e=>e.currentTarget.style.background="#fef3c7"}
-                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}
-                            >
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
                               <div>
                                 <div style={{fontWeight:600,fontSize:13,color:"#92400e"}}>{p.nombre}</div>
                                 <div style={{fontSize:11,color:"#b45309",marginTop:2}}>Stock: {p.stock} · {p.categoria||"Sin categoría"}</div>
                               </div>
-                              <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#f59e0b",borderRadius:20,padding:"3px 10px",flexShrink:0,whiteSpace:"nowrap"}}>
-                                📍 Asignar →
-                              </span>
+                              <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#f59e0b",borderRadius:20,padding:"3px 10px",flexShrink:0,whiteSpace:"nowrap"}}>📍 Asignar →</span>
                             </button>
                           ))}
                         </div>
@@ -1201,13 +1216,15 @@ export default function App() {
                       <div style={{...S.card,textAlign:"center",padding:"48px 20px"}}>
                         <div style={{fontSize:48,marginBottom:12}}>🗺</div>
                         <div style={{fontWeight:700,fontSize:18,color:"var(--gray-800)",marginBottom:8}}>El mapa está vacío</div>
-                        <div style={{color:"var(--gray-500)",marginBottom:20}}>Registra productos y asígnales Armario y Segmento para visualizarlos aquí</div>
+                        <div style={{color:"var(--gray-500)",marginBottom:20}}>Registra productos y asígnales Armario y Segmento para verlos aquí</div>
                         <button style={S.btn()} onClick={()=>setTab("registrar")}>📷 Ir a Registrar</button>
                       </div>
                     )}
 
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
-                      {ubicados.map(armario => {
+                    {/* ── Grid de armarios ── */}
+                    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+                      {ubicados.map((armario, ai) => {
+                        const ac = ARM_COLORS[ai % ARM_COLORS.length];
                         const items = byArmario[armario];
                         const bySegmento = {};
                         items.forEach(p => {
@@ -1217,37 +1234,44 @@ export default function App() {
                         });
                         const segs = Object.keys(bySegmento).sort();
                         return (
-                          <div key={armario} style={{background:"var(--white)",borderRadius:16,overflow:"hidden",boxShadow:"var(--shadow-sm)",border:"1.5px solid var(--gray-200)"}}>
-                            <div style={{background:"var(--green-700)",padding:"12px 16px",display:"flex",alignItems:"center",gap:8}}>
-                              <span style={{fontSize:22}}>🗄</span>
-                              <div>
-                                <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>{armario}</div>
-                                <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>{items.length} producto{items.length>1?"s":""}</div>
+                          <div key={armario} style={{background:"var(--white)",borderRadius:16,overflow:"hidden",boxShadow:"var(--shadow-sm)",border:`1.5px solid ${ac.border}`}}>
+                            {/* Cabecera armario — clickeable para vista amplia */}
+                            <button onClick={()=>setArmarioVista({armario,items,bySegmento,segs,ac})}
+                              style={{width:"100%",background:ac.bg,padding:"14px 16px",display:"flex",alignItems:"center",gap:10,border:"none",cursor:"pointer",textAlign:"left"}}>
+                              <div style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🗄</div>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontWeight:800,fontSize:16,color:ac.text}}>{armario}</div>
+                                <div style={{fontSize:11,color:`${ac.text}cc`}}>{items.length} producto{items.length>1?"s":""} · {segs.length} segmento{segs.length>1?"s":""}</div>
                               </div>
-                            </div>
-                            <div style={{padding:12,display:"flex",flexDirection:"column",gap:8}}>
-                              {segs.map((seg,si) => (
-                                <div key={seg} style={{border:"1.5px solid var(--gray-100)",borderRadius:10,overflow:"hidden"}}>
-                                  <div style={{background:"var(--green-50)",padding:"6px 12px",fontSize:11,fontWeight:700,color:"var(--green-700)",borderBottom:"1px solid var(--gray-100)",display:"flex",alignItems:"center",gap:6}}>
-                                    <span style={{background:"var(--green-600)",color:"#fff",width:18,height:18,borderRadius:5,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{si+1}</span>
-                                    {seg}
-                                    <span style={{marginLeft:"auto",fontSize:10,color:"var(--gray-400)"}}>{bySegmento[seg].length} ítem{bySegmento[seg].length>1?"s":""}</span>
+                              <span style={{fontSize:11,color:`${ac.text}99`,flexShrink:0}}>ver →</span>
+                            </button>
+                            {/* Segmentos */}
+                            <div style={{padding:10,display:"flex",flexDirection:"column",gap:7}}>
+                              {segs.map((seg,si) => {
+                                const sc = SEG_COLORS[si % SEG_COLORS.length];
+                                return (
+                                  <div key={seg} style={{border:`1.5px solid ${sc.border}`,borderRadius:10,overflow:"hidden"}}>
+                                    <div style={{background:sc.bg,padding:"6px 12px",fontSize:11,fontWeight:700,color:sc.text,display:"flex",alignItems:"center",gap:6}}>
+                                      <span style={{background:sc.num,color:"#fff",width:18,height:18,borderRadius:5,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{si+1}</span>
+                                      {seg}
+                                      <span style={{marginLeft:"auto",fontSize:10,color:sc.text,opacity:.6}}>{bySegmento[seg].length} ítem{bySegmento[seg].length>1?"s":""}</span>
+                                    </div>
+                                    <div style={{padding:"7px 10px",display:"flex",flexWrap:"wrap",gap:5}}>
+                                      {bySegmento[seg].map(p => {
+                                        const stBg  = p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
+                                        const stCol = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
+                                        return (
+                                          <div key={p.id} title={`Stock: ${p.stock} | Lote: ${p.lote||"—"}`}
+                                            style={{padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:stBg,color:stCol,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                            {p.nombre.length>20?p.nombre.slice(0,18)+"…":p.nombre}
+                                            <span style={{marginLeft:3,opacity:.7}}>×{p.stock}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
-                                  <div style={{padding:"8px 12px",display:"flex",flexWrap:"wrap",gap:5}}>
-                                    {bySegmento[seg].map(p => {
-                                      const st  = p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
-                                      const stc = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
-                                      return (
-                                        <div key={p.id} title={`Stock: ${p.stock} | Lote: ${p.lote||"—"} | Vence: ${p.fechaVencimiento||"—"}`}
-                                          style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:st,color:stc,cursor:"default"}}>
-                                          {p.nombre.length>22?p.nombre.slice(0,20)+"…":p.nombre}
-                                          <span style={{marginLeft:4,opacity:.75}}>×{p.stock}</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         );
@@ -1256,6 +1280,62 @@ export default function App() {
                   </div>
                 );
               })()}
+
+              {/* ── MODAL VISTA AMPLIADA DE ARMARIO ── */}
+              {armarioVista && (
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:0}} onClick={e=>{if(e.target===e.currentTarget)setArmarioVista(null);}}>
+                  <div style={{background:"var(--white)",width:"100%",maxWidth:600,maxHeight:"90vh",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+                    {/* Header modal */}
+                    <div style={{background:armarioVista.ac.bg,padding:"18px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+                      <div style={{width:44,height:44,borderRadius:12,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🗄</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:800,fontSize:20,color:armarioVista.ac.text}}>{armarioVista.armario}</div>
+                        <div style={{fontSize:12,color:`${armarioVista.ac.text}cc`}}>{armarioVista.items.length} productos · {armarioVista.segs.length} segmentos</div>
+                      </div>
+                      <button onClick={()=>setArmarioVista(null)} style={{background:"rgba(255,255,255,0.2)",border:"none",color:armarioVista.ac.text,width:34,height:34,borderRadius:8,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                    </div>
+                    {/* Contenido scrollable */}
+                    <div style={{overflowY:"auto",padding:16,flex:1}}>
+                      {armarioVista.segs.map((seg,si) => {
+                        const sc = SEG_COLORS[si % SEG_COLORS.length];
+                        const prods = armarioVista.bySegmento[seg];
+                        return (
+                          <div key={seg} style={{marginBottom:14,border:`2px solid ${sc.border}`,borderRadius:14,overflow:"hidden"}}>
+                            {/* Etiqueta segmento */}
+                            <div style={{background:sc.bg,padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{background:sc.num,color:"#fff",width:22,height:22,borderRadius:6,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>{si+1}</span>
+                              <span style={{fontWeight:700,fontSize:14,color:sc.text}}>{seg}</span>
+                              <span style={{marginLeft:"auto",fontSize:11,color:sc.text,opacity:.7,fontWeight:600}}>{prods.length} producto{prods.length>1?"s":""}</span>
+                            </div>
+                            {/* Lista de productos en el segmento */}
+                            <div style={{padding:12,display:"flex",flexDirection:"column",gap:8}}>
+                              {prods.map(p => {
+                                const stBg  = p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
+                                const stCol = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
+                                return (
+                                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--gray-50)",borderRadius:10,border:"1px solid var(--gray-100)"}}>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
+                                      <div style={{fontSize:11,color:"var(--gray-400)",marginTop:2}}>{p.categoria||""}{p.lote?` · Lote: ${p.lote}`:""}</div>
+                                    </div>
+                                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:stBg,color:stCol}}>×{p.stock}</span>
+                                      {p.stock===0 && <span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#ef4444",borderRadius:4,padding:"1px 5px"}}>PEDIR</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{padding:"12px 16px",borderTop:"1px solid var(--gray-100)",flexShrink:0}}>
+                      <button onClick={()=>setArmarioVista(null)} style={{...S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"}),width:"100%",justifyContent:"center"}}>Cerrar</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1264,7 +1344,7 @@ export default function App() {
             <div className="fadeUp">
               <div style={S.secH}><div><div style={S.secT}>Análisis</div><div style={S.secS}>Inteligencia para tu negocio</div></div></div>
 
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
                 {/* Gráfica por categoría */}
                 <div style={{...S.card,marginBottom:0}}>
                   <div style={{fontWeight:700,fontSize:14,color:"var(--gray-900)",marginBottom:12}}>📦 Stock por Categoría</div>
@@ -1375,7 +1455,7 @@ export default function App() {
             <div style={{display:"flex",flex:1,overflow:"hidden"}}>
 
               {/* ── Columna 1: Proyectos ── */}
-              <div style={{width:110,background:"var(--green-50)",borderRight:"1px solid var(--gray-100)",padding:"12px 0",flexShrink:0,overflowY:"auto"}}>
+              <div style={{width:isMobile?90:110,background:"var(--green-50)",borderRight:"1px solid var(--gray-100)",padding:"12px 0",flexShrink:0,overflowY:"auto"}}>
                 <div style={{fontSize:9,fontWeight:800,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5,padding:"0 12px 8px"}}>Proyectos</div>
                 {projects.map(p=>(
                   <button key={p.id} onClick={()=>{setCurrentProject(p);setSidebarOpen(false);}} style={{display:"block",width:"100%",padding:"10px 12px",background:currentProject?.id===p.id?"var(--green-100)":"none",border:"none",borderLeft:`3px solid ${currentProject?.id===p.id?"var(--green-600)":"transparent"}`,cursor:"pointer",textAlign:"left",fontSize:12,fontWeight:currentProject?.id===p.id?700:500,color:currentProject?.id===p.id?"var(--green-800)":"var(--gray-600)",lineHeight:1.3,wordBreak:"break-word"}}>
