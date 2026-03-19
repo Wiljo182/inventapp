@@ -673,24 +673,34 @@ export default function App() {
     <div style={S.page}>
       {/* HEADER */}
       <header style={S.hdr}>
-        <div style={S.logo}>
-          <div style={S.logoIcon}>🏪</div>
-          Invent<span style={{color:"var(--green-500)"}}>App</span>
+        {/* ── ☰ izquierda ── */}
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",padding:0,flexShrink:0}} aria-label="Menú">
+            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+            <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
+          </button>
+          <div style={S.logo}>
+            <div style={S.logoIcon}>🪴</div>
+            Invent<span style={{color:"var(--green-500)"}}>App</span>
+          </div>
         </div>
-        {/* ── Botón ☰ abre sidebar ── */}
-        <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",padding:0,flexShrink:0}} aria-label="Menú">
-          <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
-          <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
-          <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
-        </button>
+        {/* Proyecto activo + usuario */}
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {currentProject && (
+            <div style={{fontSize:12,background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:20,padding:"4px 12px",color:"var(--green-700)",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              📁 {currentProject.name}
+            </div>
+          )}
+          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:5}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green-500)",display:"inline-block"}}/>
+            <span style={{maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{userDoc?.name||user.email?.split("@")[0]}</span>
+            <span style={{fontSize:10,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 6px",borderRadius:20,fontWeight:700}}>{userDoc?.role||"consultor"}</span>
+          </div>
+        </div>
       </header>
 
-      {/* TABS */}
-      <nav style={S.tabs}>
-        {allTabs.map(([id,lbl])=>(
-          <button key={id} style={S.tab(tab===id)} onClick={()=>setTab(id)}>{lbl}</button>
-        ))}
-      </nav>
+
 
       {/* Sin proyecto */}
       {!currentProject && (
@@ -708,68 +718,160 @@ export default function App() {
           {/* ════ DASHBOARD ════ */}
           {tab==="dashboard" && (
             <div className="fadeUp">
-              <div style={S.secH}>
+
+              {/* ── Cabecera ── */}
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
                 <div>
-                  <div style={S.secT}>Dashboard</div>
-                  <div style={S.secS}>{currentProject.name} · {new Date().toLocaleDateString("es-CO",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+                  <div style={{fontWeight:800,fontSize:24,color:"var(--gray-900)",lineHeight:1.1}}>{currentProject.name}</div>
+                  <div style={{fontSize:13,color:"var(--gray-400)",marginTop:3}}>{new Date().toLocaleDateString("es-CO",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
                 </div>
                 <button style={S.btn("var(--green-600)")} onClick={exportCSV}>⬇ CSV</button>
               </div>
 
-              {/* KPIs */}
-              <div style={S.kGrid}>
-                {[
-                  ["Productos",      products.length,                                    "#22c55e"],
-                  ["Valor Inventario","$"+Math.round(totalVal/1000)+"K",                "#3b82f6"],
-                  ["Stock Bajo",     alerts.filter(p=>p.stock>0).length,                "#f97316"],
-                  ["Sin Stock",      products.filter(p=>p.stock===0).length,            "#ef4444"],
-                  ["Alertas Venc.",  expiryAlerts.length,                               "#d97706"],
-                  ["Master DB",      masterProducts.length,                             "#8b5cf6"],
-                ].map(([lbl,val,color])=>(
-                  <div key={lbl} style={S.kCard(color)}>
-                    <div style={{fontSize:11,fontWeight:700,color:"var(--gray-500)",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>{lbl}</div>
-                    <div style={{fontSize:26,fontWeight:800,color:"var(--gray-900)"}}>{val}</div>
+              {/* ── Layout 2 columnas: principal + alertas ── */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:16,alignItems:"start"}}>
+
+                {/* ═══ COLUMNA PRINCIPAL ═══ */}
+                <div>
+
+                  {/* KPI Cards — 2 filas de 3 */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
+                    {[
+                      {lbl:"Productos",    val:products.length,                               icon:"📦", accent:"#22c55e", bg:"#f0fdf4"},
+                      {lbl:"Valor",        val:"$"+Math.round(totalVal/1000)+"K",             icon:"💰", accent:"#3b82f6", bg:"#eff6ff"},
+                      {lbl:"Categorías",   val:[...new Set(products.map(p=>p.categoria).filter(Boolean))].length, icon:"🏷️", accent:"#8b5cf6", bg:"#f5f3ff"},
+                      {lbl:"Stock Bajo",   val:alerts.filter(p=>p.stock>0).length,            icon:"⚠️", accent:"#f97316", bg:"#fff7ed"},
+                      {lbl:"Sin Stock",    val:products.filter(p=>p.stock===0).length,        icon:"🚨", accent:"#ef4444", bg:"#fef2f2"},
+                      {lbl:"Master DB",    val:masterProducts.length,                         icon:"🗄", accent:"#8b5cf6", bg:"#f5f3ff"},
+                    ].map(({lbl,val,icon,accent,bg})=>(
+                      <div key={lbl} style={{background:bg,borderRadius:14,padding:"14px 16px",border:`1.5px solid ${accent}22`,position:"relative",overflow:"hidden"}}>
+                        <div style={{position:"absolute",top:8,right:12,fontSize:22,opacity:.18}}>{icon}</div>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gray-500)",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{lbl}</div>
+                        <div style={{fontSize:28,fontWeight:900,color:accent,lineHeight:1}}>{val}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
 
-              {/* Alertas vencimiento */}
-              <ExpiryAlertCard products={products} />
-
-              {/* Alertas stock */}
-              <div style={S.card}>
-                <div style={{fontWeight:700,fontSize:15,color:"var(--gray-900)",marginBottom:14}}>🚨 Alertas de Stock</div>
-                {alerts.length===0
-                  ? <div style={{textAlign:"center",padding:"20px 0",color:"var(--gray-400)"}}>✅ Todo el inventario bien abastecido</div>
-                  : alerts.map(p=>(
-                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:"var(--radius)",marginBottom:8,background:p.stock===0?"var(--red-100)":"var(--amber-100)",borderLeft:`4px solid ${p.stock===0?"var(--red-500)":"var(--amber-400)"}`}}>
-                      <span style={{fontSize:18}}>{p.stock===0?"🚨":"⚠️"}</span>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:600,fontSize:14}}>{p.nombre}</div>
-                        <div style={{fontSize:12,color:"var(--gray-500)"}}>Stock: {p.stock} · Mín: {p.minimo} · {p.proveedor||"Sin proveedor"}</div>
+                  {/* Barra de salud del inventario */}
+                  {products.length > 0 && (()=>{
+                    const ok    = products.filter(p=>p.stock>p.minimo).length;
+                    const bajo  = alerts.filter(p=>p.stock>0).length;
+                    const cero  = products.filter(p=>p.stock===0).length;
+                    const total = products.length;
+                    return (
+                      <div style={{...S.card,marginBottom:16,padding:"16px 20px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                          <div style={{fontWeight:700,fontSize:14,color:"var(--gray-800)"}}>📊 Salud del inventario</div>
+                          <div style={{fontSize:12,color:"var(--gray-400)"}}>{total} productos</div>
+                        </div>
+                        <div style={{height:10,borderRadius:99,background:"var(--gray-100)",overflow:"hidden",display:"flex"}}>
+                          <div style={{width:`${ok/total*100}%`,background:"#22c55e",transition:"width .5s"}}/>
+                          <div style={{width:`${bajo/total*100}%`,background:"#f97316",transition:"width .5s"}}/>
+                          <div style={{width:`${cero/total*100}%`,background:"#ef4444",transition:"width .5s"}}/>
+                        </div>
+                        <div style={{display:"flex",gap:16,marginTop:8}}>
+                          {[[ok,"OK","#22c55e"],[bajo,"Bajo","#f97316"],[cero,"Sin stock","#ef4444"]].map(([n,l,c])=>(
+                            <div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11}}>
+                              <span style={{width:8,height:8,borderRadius:2,background:c,display:"inline-block"}}/>
+                              <span style={{color:"var(--gray-500)"}}>{l}:</span>
+                              <span style={{fontWeight:700,color:c}}>{n}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <span style={{fontSize:12,fontWeight:700,color:p.stock===0?"#991b1b":"#92400e",whiteSpace:"nowrap"}}>{p.stock===0?"¡PEDIR YA!":"Pedir pronto"}</span>
-                    </div>
-                  ))
-                }
-              </div>
+                    );
+                  })()}
 
-              {/* Últimos movimientos */}
-              <div style={S.card}>
-                <div style={{fontWeight:700,fontSize:15,color:"var(--gray-900)",marginBottom:14}}>🕐 Últimos Movimientos</div>
-                {movements.length===0
-                  ? <div style={{textAlign:"center",padding:"20px 0",color:"var(--gray-400)"}}>Sin movimientos aún</div>
-                  : movements.slice(0,6).map(m=>(
-                    <div key={m.id} style={S.movI}>
-                      <div style={{width:34,height:34,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:m.tipo==="entrada"?"var(--green-100)":"var(--red-100)"}}>{m.tipo==="entrada"?"📥":"📤"}</div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nombre}</div>
-                        <div style={{fontSize:11,color:"var(--gray-400)"}}>{fmtDt(m.fecha)} · {m.motivo}</div>
-                      </div>
-                      <span style={{fontWeight:700,color:m.tipo==="entrada"?"var(--green-600)":"var(--red-500)",flexShrink:0}}>{m.tipo==="entrada"?"+":"-"}{m.cantidad}</span>
+                  {/* Últimos movimientos */}
+                  <div style={S.card}>
+                    <div style={{fontWeight:700,fontSize:14,color:"var(--gray-900)",marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+                      <span>🕐</span> Últimos Movimientos
+                      {movements.length>0 && <span style={{marginLeft:"auto",fontSize:11,color:"var(--gray-400)",fontWeight:400}}>{movements.length} total</span>}
                     </div>
-                  ))
-                }
+                    {movements.length===0
+                      ? <div style={{textAlign:"center",padding:"24px 0",color:"var(--gray-300)",fontSize:13}}>Sin movimientos aún</div>
+                      : movements.slice(0,5).map(m=>(
+                        <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:"1px solid var(--gray-50)"}}>
+                          <div style={{width:30,height:30,borderRadius:8,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:m.tipo==="entrada"?"#dcfce7":"#fee2e2",fontSize:14}}>{m.tipo==="entrada"?"📥":"📤"}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.nombre}</div>
+                            <div style={{fontSize:10,color:"var(--gray-400)"}}>{fmtDt(m.fecha)}</div>
+                          </div>
+                          <span style={{fontWeight:800,fontSize:13,color:m.tipo==="entrada"?"var(--green-600)":"var(--red-500)",flexShrink:0}}>{m.tipo==="entrada"?"+":"-"}{m.cantidad}</span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                </div>
+
+                {/* ═══ COLUMNA DERECHA: ALERTAS ═══ */}
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+                  {/* Alertas de vencimiento compactas */}
+                  {expiryAlerts.length > 0 && (
+                    <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,padding:"14px 16px"}}>
+                      <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+                        ⏰ Vencimientos <span style={{marginLeft:"auto",background:"#f59e0b",color:"#fff",borderRadius:20,padding:"1px 8px",fontSize:11}}>{expiryAlerts.length}</span>
+                      </div>
+                      {expiryAlerts.slice(0,5).map(p=>{
+                        const s = expiryStatus(p.fechaVencimiento);
+                        return (
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #fde68a"}}>
+                            <span style={{fontSize:14,flexShrink:0}}>{s.icon}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"#92400e"}}>{p.nombre}</div>
+                              <div style={{fontSize:10,color:"#b45309"}}>{s.label}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {expiryAlerts.length>5 && <div style={{fontSize:10,color:"#92400e",marginTop:6,textAlign:"center"}}>+{expiryAlerts.length-5} más</div>}
+                    </div>
+                  )}
+
+                  {/* Alertas de stock compactas */}
+                  {alerts.length > 0 ? (
+                    <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:14,padding:"14px 16px"}}>
+                      <div style={{fontWeight:700,fontSize:13,color:"#991b1b",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+                        🚨 Stock <span style={{marginLeft:"auto",background:"#ef4444",color:"#fff",borderRadius:20,padding:"1px 8px",fontSize:11}}>{alerts.length}</span>
+                      </div>
+                      {alerts.slice(0,6).map(p=>(
+                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid #fee2e2"}}>
+                          <span style={{fontSize:13,flexShrink:0}}>{p.stock===0?"🔴":"🟡"}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:p.stock===0?"#991b1b":"#92400e"}}>{p.nombre}</div>
+                            <div style={{fontSize:10,color:"var(--gray-400)"}}>Stock: {p.stock} · Mín: {p.minimo}</div>
+                          </div>
+                          {p.stock===0 && <span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#ef4444",borderRadius:4,padding:"2px 5px",flexShrink:0,whiteSpace:"nowrap"}}>PEDIR</span>}
+                        </div>
+                      ))}
+                      {alerts.length>6 && <div style={{fontSize:10,color:"#991b1b",marginTop:6,textAlign:"center"}}>+{alerts.length-6} más</div>}
+                    </div>
+                  ) : (
+                    <div style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:14,padding:"14px 16px",textAlign:"center"}}>
+                      <div style={{fontSize:24,marginBottom:4}}>✅</div>
+                      <div style={{fontSize:12,fontWeight:600,color:"#166534"}}>Inventario OK</div>
+                      <div style={{fontSize:10,color:"var(--green-600)",marginTop:2}}>Todo bien abastecido</div>
+                    </div>
+                  )}
+
+                  {/* Accesos rápidos */}
+                  {isConsultor && (
+                    <div style={{background:"var(--white)",border:"1.5px solid var(--gray-100)",borderRadius:14,padding:"14px 16px"}}>
+                      <div style={{fontWeight:700,fontSize:12,color:"var(--gray-500)",textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>Accesos rápidos</div>
+                      {[
+                        {lbl:"📷 Registrar",   fn:()=>setTab("registrar"),   bg:"#f0fdf4",c:"#166534"},
+                        {lbl:"↕ Movimiento",   fn:()=>setMovModal(true),     bg:"#eff6ff",c:"#1d4ed8"},
+                        {lbl:"🗺 Bodega",       fn:()=>setTab("bodega"),      bg:"#f5f3ff",c:"#7c3aed"},
+                        {lbl:"📈 Análisis",     fn:()=>setTab("analisis"),    bg:"#fff7ed",c:"#c2410c"},
+                      ].map(({lbl,fn,bg,c})=>(
+                        <button key={lbl} onClick={fn} style={{display:"block",width:"100%",padding:"8px 12px",marginBottom:6,background:bg,border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,color:c,textAlign:"left"}}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
