@@ -339,6 +339,9 @@ export default function App() {
   const [inviteEmail,   setInviteEmail]   = useState("");
   const [inviteRole,    setInviteRole]    = useState("consultor");
   const [inviteModal,   setInviteModal]   = useState(false);
+  const [teamModal,     setTeamModal]     = useState(false);
+  const [teamMembers,   setTeamMembers]   = useState([]);
+  const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [clientModal,   setClientModal]   = useState(false);
   const [newClient,     setNewClient]     = useState({email:"",pass:"",name:""});
@@ -353,8 +356,15 @@ export default function App() {
       setUser(u);
       if (u) {
         const snap = await getDoc(doc(db,"users",u.uid));
-        if (snap.exists()) setUserDoc(snap.data());
-        else {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.disabled) {
+            // Cuenta desactivada — forzar logout
+            await signOut(auth);
+            return;
+          }
+          setUserDoc(data);
+        } else {
           await setDoc(doc(db,"users",u.uid), { email:u.email, role:"consultor", createdAt:new Date().toISOString() });
           setUserDoc({ email:u.email, role:"consultor" });
         }
@@ -480,6 +490,50 @@ export default function App() {
       setClientModal(false); setNewClient({email:"",pass:"",name:""});
     } catch(e) { showToast("❌ "+e.message,"warning"); }
     finally { setInviteLoading(false); }
+  }
+
+  // ── Cargar miembros del proyecto ──
+  async function loadTeamMembers() {
+    if (!currentProject?.members?.length) { setTeamMembers([]); return; }
+    setTeamLoading(true);
+    try {
+      const members = [];
+      for (const uid of currentProject.members) {
+        const snap = await getDoc(doc(db,"users",uid));
+        if (snap.exists()) members.push({ uid, ...snap.data() });
+        else members.push({ uid, email:"(sin perfil)", role:"consultor", name:"" });
+      }
+      setTeamMembers(members);
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+    finally { setTeamLoading(false); }
+  }
+
+  // ── Quitar miembro del proyecto ──
+  async function removeMember(uid) {
+    if (!window.confirm("¿Quitar este miembro del proyecto?")) return;
+    try {
+      const upd = (currentProject.members||[]).filter(m => m !== uid);
+      await updateDoc(doc(db,"projects",currentProject.id),{members:upd});
+      setCurrentProject(p=>({...p,members:upd}));
+      setProjects(prev=>prev.map(p=>p.id===currentProject.id?{...p,members:upd}:p));
+      setTeamMembers(prev=>prev.filter(m=>m.uid!==uid));
+      showToast("✅ Miembro quitado del proyecto","success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Desactivar cuenta completamente (Firebase Identity Toolkit) ──
+  async function disableAccount(uid, email) {
+    if (!window.confirm(`¿Desactivar la cuenta de ${email}? No podrá iniciar sesión en ningún proyecto.`)) return;
+    try {
+      // Primero quitar del proyecto
+      await removeMember(uid);
+      // Luego desactivar via Admin SDK a través de nuestra Netlify function
+      const apiKey = process.env.REACT_APP_FIREBASE_API_KEY;
+      // Usamos la API de Firebase Admin para deshabilitar — necesitamos token de admin
+      // Por ahora: marcar como desactivado en Firestore y bloquear en el login
+      await updateDoc(doc(db,"users",uid),{ disabled: true, disabledAt: new Date().toISOString(), disabledBy: user.uid });
+      showToast(`🚫 Cuenta de ${email} desactivada`,"success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
   }
 
   // ── Scanner result ──
@@ -625,7 +679,7 @@ export default function App() {
               {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
-          {isConsultor && currentProject && <button style={S.bSm("var(--blue-100)","var(--blue-500)")} onClick={()=>setInviteModal(true)}>👥 Invitar</button>}{isConsultor && currentProject && <button style={S.bSm("#fef3c7","#92400e")} onClick={()=>setClientModal(true)}>+ Cliente</button>}{isConsultor && <button style={S.bSm("var(--green-100)","var(--green-800)")} onClick={()=>setProjModal(true)}>+ Proyecto</button>}
+          {isConsultor && currentProject && <button style={S.bSm("var(--blue-100)","var(--blue-500)")} onClick={()=>setInviteModal(true)}>👥 Invitar</button>}{isConsultor && currentProject && <button style={S.bSm("#ede9fe","#7c3aed")} onClick={()=>{loadTeamMembers();setTeamModal(true);}}>⚙️ Equipo</button>}{isConsultor && currentProject && <button style={S.bSm("#fef3c7","#92400e")} onClick={()=>setClientModal(true)}>+ Cliente</button>}{isConsultor && <button style={S.bSm("var(--green-100)","var(--green-800)")} onClick={()=>setProjModal(true)}>+ Proyecto</button>}
           <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:6}}>
             <span style={{width:8,height:8,borderRadius:"50%",background:"var(--green-500)",display:"inline-block"}}/>
             {userDoc?.name || user.email?.split("@")[0]}
@@ -1042,6 +1096,59 @@ export default function App() {
         </div>
       )}
 
+
+      {/* ════ MODAL GESTIÓN DE EQUIPO ════ */}
+      {teamModal && (
+        <div style={S.ovrl} onClick={e=>{if(e.target===e.currentTarget)setTeamModal(false)}}>
+          <div style={{...S.modal, maxWidth:580}}>
+            <div style={{fontWeight:800,fontSize:18,color:"var(--gray-900)",marginBottom:6}}>⚙️ Gestión de Equipo</div>
+            <div style={{fontSize:13,color:"var(--gray-500)",marginBottom:20}}>Proyecto: <strong>{currentProject?.name}</strong></div>
+            {teamLoading ? (
+              <div style={{textAlign:"center",padding:"32px 0",color:"var(--gray-400)"}}>
+                <div style={{width:32,height:32,border:"3px solid var(--gray-200)",borderTop:"3px solid var(--green-600)",borderRadius:"50%",animation:"spin .7s linear infinite",margin:"0 auto 12px"}}/>
+                Cargando miembros...
+              </div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {teamMembers.length === 0 ? (
+                  <div style={{textAlign:"center",padding:"20px 0",color:"var(--gray-400)"}}>Sin miembros</div>
+                ) : teamMembers.map(m => (
+                  <div key={m.uid} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderRadius:"var(--radius)",background:m.disabled?"#fef2f2":"var(--gray-50)",border:`1.5px solid ${m.disabled?"#fecaca":"var(--gray-200)"}`,opacity:m.disabled?.8:1}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:m.role==="cliente"?"#fef3c7":m.disabled?"#fee2e2":"var(--green-100)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                      {m.disabled?"🚫":m.role==="cliente"?"🧑‍💼":"🔧"}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name||m.email}</div>
+                      <div style={{fontSize:11,color:"var(--gray-400)"}}>{m.email} · <span style={{fontWeight:600,color:m.role==="cliente"?"#92400e":m.disabled?"#991b1b":"var(--green-700)"}}>{m.disabled?"DESACTIVADO":m.role}</span></div>
+                    </div>
+                    {m.uid !== user.uid && !m.disabled && (
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        <button style={{...S.bSm("#fef3c7","#92400e"),fontSize:11,padding:"5px 10px"}} onClick={()=>removeMember(m.uid)} title="Quitar del proyecto">
+                          🚫 Quitar
+                        </button>
+                        <button style={{...S.bSm("#fee2e2","#991b1b"),fontSize:11,padding:"5px 10px"}} onClick={()=>disableAccount(m.uid,m.email||m.name)} title="Desactivar cuenta">
+                          🗑️ Bloquear
+                        </button>
+                      </div>
+                    )}
+                    {m.uid === user.uid && (
+                      <span style={{fontSize:11,color:"var(--gray-400)",fontWeight:600}}>Tú</span>
+                    )}
+                    {m.disabled && (
+                      <span style={{fontSize:11,color:"#991b1b",fontWeight:700}}>BLOQUEADO</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
+              <button style={S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"})} onClick={()=>setTeamModal(false)}>Cerrar</button>
+              <button style={S.btn("var(--green-600)")} onClick={()=>{setTeamModal(false);setInviteModal(true);}}>👥 + Invitar</button>
+              <button style={S.btn("#d97706")} onClick={()=>{setTeamModal(false);setClientModal(true);}}>+ Cliente</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ════ MODAL INVITAR MIEMBRO ════ */}
       {inviteModal && (
