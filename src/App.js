@@ -1241,9 +1241,9 @@ export default function App() {
                               <div style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🗄</div>
                               <div style={{flex:1,minWidth:0}}>
                                 <div style={{fontWeight:800,fontSize:16,color:ac.text}}>{armario}</div>
-                                <div style={{fontSize:11,color:`${ac.text}cc`}}>{items.length} producto{items.length>1?"s":""} · {segs.length} segmento{segs.length>1?"s":""}</div>
+                                <div style={{fontSize:11,color:"rgba(255,255,255,0.75)"}}>{items.length} producto{items.length>1?"s":""} · {segs.length} segmento{segs.length>1?"s":""}</div>
                               </div>
-                              <span style={{fontSize:11,color:`${ac.text}99`,flexShrink:0}}>ver →</span>
+                              <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",flexShrink:0}}>ver →</span>
                             </button>
                             {/* Segmentos */}
                             <div style={{padding:10,display:"flex",flexDirection:"column",gap:7}}>
@@ -1281,58 +1281,190 @@ export default function App() {
                 );
               })()}
 
-              {/* ── MODAL VISTA AMPLIADA DE ARMARIO ── */}
+              {/* ── VISTA COMPLETA DE ARMARIO (full screen) ── */}
               {armarioVista && (
-                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:0}} onClick={e=>{if(e.target===e.currentTarget)setArmarioVista(null);}}>
-                  <div style={{background:"var(--white)",width:"100%",maxWidth:600,maxHeight:"90vh",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
-                    {/* Header modal */}
-                    <div style={{background:armarioVista.ac.bg,padding:"18px 20px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                      <div style={{width:44,height:44,borderRadius:12,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🗄</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontWeight:800,fontSize:20,color:armarioVista.ac.text}}>{armarioVista.armario}</div>
-                        <div style={{fontSize:12,color:`${armarioVista.ac.text}cc`}}>{armarioVista.items.length} productos · {armarioVista.segs.length} segmentos</div>
+                <div style={{
+                  position:"fixed", inset:0, zIndex:500,
+                  background:"#f8fafc",
+                  display:"flex", flexDirection:"column",
+                  overflowY:"auto",
+                }}>
+                  {/* ── Barra superior del armario ── */}
+                  <div style={{
+                    background:armarioVista.ac.bg,
+                    padding:"0 20px",
+                    display:"flex", alignItems:"center", gap:14,
+                    height:64, flexShrink:0,
+                    position:"sticky", top:0, zIndex:10,
+                    boxShadow:"0 2px 12px rgba(0,0,0,0.18)",
+                  }}>
+                    <button onClick={()=>setArmarioVista(null)} style={{
+                      background:"rgba(255,255,255,0.18)", border:"none",
+                      color:"#fff", width:36, height:36, borderRadius:10,
+                      cursor:"pointer", fontSize:18, display:"flex",
+                      alignItems:"center", justifyContent:"center", flexShrink:0,
+                    }}>←</button>
+                    <div style={{
+                      width:42, height:42, borderRadius:12,
+                      background:"rgba(255,255,255,0.18)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:22, flexShrink:0,
+                    }}>🗄</div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:800, fontSize:20, color:"#fff", lineHeight:1.1}}>
+                        {armarioVista.armario}
                       </div>
-                      <button onClick={()=>setArmarioVista(null)} style={{background:"rgba(255,255,255,0.2)",border:"none",color:armarioVista.ac.text,width:34,height:34,borderRadius:8,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>
+                      <div style={{fontSize:12, color:"rgba(255,255,255,0.72)", marginTop:2}}>
+                        {armarioVista.items.length} producto{armarioVista.items.length>1?"s":""} · {armarioVista.segs.length} segmento{armarioVista.segs.length>1?"s":""}
+                      </div>
                     </div>
-                    {/* Contenido scrollable */}
-                    <div style={{overflowY:"auto",padding:16,flex:1}}>
-                      {armarioVista.segs.map((seg,si) => {
-                        const sc = SEG_COLORS[si % SEG_COLORS.length];
-                        const prods = armarioVista.bySegmento[seg];
-                        return (
-                          <div key={seg} style={{marginBottom:14,border:`2px solid ${sc.border}`,borderRadius:14,overflow:"hidden"}}>
-                            {/* Etiqueta segmento */}
-                            <div style={{background:sc.bg,padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
-                              <span style={{background:sc.num,color:"#fff",width:22,height:22,borderRadius:6,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>{si+1}</span>
-                              <span style={{fontWeight:700,fontSize:14,color:sc.text}}>{seg}</span>
-                              <span style={{marginLeft:"auto",fontSize:11,color:sc.text,opacity:.7,fontWeight:600}}>{prods.length} producto{prods.length>1?"s":""}</span>
-                            </div>
-                            {/* Lista de productos en el segmento */}
-                            <div style={{padding:12,display:"flex",flexDirection:"column",gap:8}}>
-                              {prods.map(p => {
-                                const stBg  = p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
-                                const stCol = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
-                                return (
-                                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--gray-50)",borderRadius:10,border:"1px solid var(--gray-100)"}}>
-                                    <div style={{flex:1,minWidth:0}}>
-                                      <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
-                                      <div style={{fontSize:11,color:"var(--gray-400)",marginTop:2}}>{p.categoria||""}{p.lote?` · Lote: ${p.lote}`:""}</div>
-                                    </div>
-                                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:stBg,color:stCol}}>×{p.stock}</span>
-                                      {p.stock===0 && <span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#ef4444",borderRadius:4,padding:"1px 5px"}}>PEDIR</span>}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                    <button onClick={()=>setArmarioVista(null)} style={{
+                      background:"rgba(255,255,255,0.18)", border:"none",
+                      color:"#fff", width:36, height:36, borderRadius:10,
+                      cursor:"pointer", fontSize:16, display:"flex",
+                      alignItems:"center", justifyContent:"center", flexShrink:0,
+                    }}>✕</button>
+                  </div>
+
+                  {/* ── Resumen rápido ── */}
+                  <div style={{
+                    display:"flex", gap:10, padding:"16px 20px 0",
+                    flexWrap:"wrap",
+                  }}>
+                    {[
+                      {lbl:"Total productos", val:armarioVista.items.length, icon:"📦"},
+                      {lbl:"Con stock",        val:armarioVista.items.filter(p=>p.stock>0).length, icon:"✅"},
+                      {lbl:"Sin stock",        val:armarioVista.items.filter(p=>p.stock===0).length, icon:"🚨"},
+                      {lbl:"Segmentos",        val:armarioVista.segs.length, icon:"🗂"},
+                    ].map(({lbl,val,icon})=>(
+                      <div key={lbl} style={{
+                        background:"#fff", borderRadius:12, padding:"12px 16px",
+                        border:"1px solid #e5e7eb", flex:"1 1 120px",
+                        display:"flex", alignItems:"center", gap:10,
+                      }}>
+                        <span style={{fontSize:20}}>{icon}</span>
+                        <div>
+                          <div style={{fontSize:10, color:"#9ca3af", fontWeight:700, textTransform:"uppercase", letterSpacing:.4}}>{lbl}</div>
+                          <div style={{fontSize:22, fontWeight:900, color:"#111827", lineHeight:1.1}}>{val}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Segmentos ── */}
+                  <div style={{padding:"16px 20px 32px", display:"flex", flexDirection:"column", gap:14}}>
+                    {armarioVista.segs.map((seg, si) => {
+                      const sc    = SEG_COLORS[si % SEG_COLORS.length];
+                      const prods = armarioVista.bySegmento[seg];
+                      const conStock = prods.filter(p=>p.stock>0).length;
+                      const sinStock = prods.filter(p=>p.stock===0).length;
+                      return (
+                        <div key={seg} style={{
+                          background:"#fff", borderRadius:16,
+                          border:`2px solid ${sc.border}`,
+                          overflow:"hidden",
+                          boxShadow:"0 1px 4px rgba(0,0,0,0.06)",
+                        }}>
+                          {/* Cabecera segmento */}
+                          <div style={{
+                            background:sc.bg, padding:"12px 18px",
+                            display:"flex", alignItems:"center", gap:10,
+                          }}>
+                            <span style={{
+                              background:sc.num, color:"#fff",
+                              width:26, height:26, borderRadius:7,
+                              display:"inline-flex", alignItems:"center",
+                              justifyContent:"center", fontSize:13,
+                              fontWeight:800, flexShrink:0,
+                            }}>{si+1}</span>
+                            <span style={{fontWeight:700, fontSize:15, color:sc.text, flex:1}}>{seg}</span>
+                            <div style={{display:"flex", gap:8, alignItems:"center"}}>
+                              {sinStock > 0 && (
+                                <span style={{fontSize:11, fontWeight:700, color:"#991b1b", background:"#fee2e2", borderRadius:20, padding:"2px 8px"}}>
+                                  {sinStock} sin stock
+                                </span>
+                              )}
+                              <span style={{fontSize:11, color:sc.text, opacity:.65, fontWeight:600}}>
+                                {prods.length} item{prods.length>1?"s":""}
+                              </span>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{padding:"12px 16px",borderTop:"1px solid var(--gray-100)",flexShrink:0}}>
-                      <button onClick={()=>setArmarioVista(null)} style={{...S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"}),width:"100%",justifyContent:"center"}}>Cerrar</button>
-                    </div>
+
+                          {/* Lista de productos */}
+                          <div style={{padding:"8px 10px", display:"flex", flexDirection:"column", gap:6}}>
+                            {prods.map((p, pi) => {
+                              const stBg  = p.stock===0?"#fef2f2":p.stock<=p.minimo?"#fffbeb":"#f0fdf4";
+                              const stCol = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
+                              const stBd  = p.stock===0?"#fecaca":p.stock<=p.minimo?"#fde68a":"#bbf7d0";
+                              return (
+                                <div key={p.id} style={{
+                                  display:"flex", alignItems:"center", gap:12,
+                                  padding:"12px 14px", borderRadius:10,
+                                  background:"#fafafa", border:`1px solid #f3f4f6`,
+                                  transition:"background .15s",
+                                }}>
+                                  {/* Número de orden */}
+                                  <span style={{
+                                    width:24, height:24, borderRadius:6,
+                                    background:sc.bg, color:"#fff",
+                                    display:"inline-flex", alignItems:"center",
+                                    justifyContent:"center", fontSize:11,
+                                    fontWeight:800, flexShrink:0,
+                                  }}>{pi+1}</span>
+
+                                  {/* Info */}
+                                  <div style={{flex:1, minWidth:0}}>
+                                    <div style={{fontWeight:600, fontSize:14, color:"#111827", lineHeight:1.2}}>
+                                      {p.nombre}
+                                    </div>
+                                    <div style={{display:"flex", gap:8, marginTop:4, flexWrap:"wrap"}}>
+                                      {p.categoria && (
+                                        <span style={{fontSize:10, color:"#6b7280", background:"#f3f4f6", borderRadius:20, padding:"1px 7px", fontWeight:600}}>
+                                          {p.categoria}
+                                        </span>
+                                      )}
+                                      {p.lote && (
+                                        <span style={{fontSize:10, color:"#6b7280", background:"#f3f4f6", borderRadius:20, padding:"1px 7px"}}>
+                                          Lote: {p.lote}
+                                        </span>
+                                      )}
+                                      {p.fechaVencimiento && (
+                                        <span style={{fontSize:10, color:"#92400e", background:"#fef3c7", borderRadius:20, padding:"1px 7px", fontWeight:600}}>
+                                          Vence: {new Date(p.fechaVencimiento).toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"})}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Stock badge */}
+                                  <div style={{
+                                    display:"flex", flexDirection:"column",
+                                    alignItems:"flex-end", gap:4, flexShrink:0,
+                                  }}>
+                                    <span style={{
+                                      padding:"5px 12px", borderRadius:20,
+                                      fontSize:13, fontWeight:800,
+                                      background:stBg, color:stCol,
+                                      border:`1px solid ${stBd}`,
+                                    }}>×{p.stock}</span>
+                                    {p.stock===0 && (
+                                      <span style={{fontSize:9, fontWeight:800, color:"#fff", background:"#ef4444", borderRadius:4, padding:"2px 6px", letterSpacing:.3}}>
+                                        PEDIR YA
+                                      </span>
+                                    )}
+                                    {p.stock>0 && p.stock<=p.minimo && (
+                                      <span style={{fontSize:9, fontWeight:800, color:"#92400e", background:"#fef3c7", borderRadius:4, padding:"2px 6px"}}>
+                                        BAJO
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
