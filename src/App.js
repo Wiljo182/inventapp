@@ -21,18 +21,18 @@ const CAT_COLOR = {
   "Frutas y Verduras":"#22c55e","Condimentos":"#eab308","Otro":"#9ca3af",
 };
 
-// Colores por armario (se ciclan si hay más de 10)
+// Colores por armario — paleta profesional, texto siempre blanco
 const ARM_COLORS = [
-  {bg:"#166534",text:"#fff",light:"#dcfce7",border:"#86efac"},  // verde oscuro
-  {bg:"#1d4ed8",text:"#fff",light:"#dbeafe",border:"#93c5fd"},  // azul
-  {bg:"#7c3aed",text:"#fff",light:"#ede9fe",border:"#c4b5fd"},  // violeta
-  {bg:"#b45309",text:"#fff",light:"#fef3c7",border:"#fcd34d"},  // ámbar
-  {bg:"#be123c",text:"#fff",light:"#ffe4e6",border:"#fda4af"},  // rosa
-  {bg:"#0e7490",text:"#fff",light:"#cffafe",border:"#67e8f9"},  // cyan
-  {bg:"#a16207",text:"#fff",light:"#fef9c3",border:"#fde047"},  // amarillo
-  {bg:"#065f46",text:"#fff",light:"#d1fae5",border:"#6ee7b7"},  // esmeralda
-  {bg:"#5b21b6",text:"#fff",light:"#ede9fe",border:"#a78bfa"},  // púrpura
-  {bg:"#92400e",text:"#fff",light:"#ffedd5",border:"#fdba74"},  // naranja
+  {bg:"#1a5c38",text:"#fff",border:"#2d7a4f"},  // verde bosque
+  {bg:"#1e3a8a",text:"#fff",border:"#2d52b0"},  // azul marino
+  {bg:"#5b21b6",text:"#fff",border:"#7c3aed"},  // índigo
+  {bg:"#9a3412",text:"#fff",border:"#c2410c"},  // terracota
+  {bg:"#155e75",text:"#fff",border:"#0e7490"},  // petróleo
+  {bg:"#3f3f46",text:"#fff",border:"#52525b"},  // carbón
+  {bg:"#7f1d1d",text:"#fff",border:"#991b1b"},  // granate
+  {bg:"#134e4a",text:"#fff",border:"#0f766e"},  // jade
+  {bg:"#4c1d95",text:"#fff",border:"#6d28d9"},  // uva
+  {bg:"#713f12",text:"#fff",border:"#92400e"},  // chocolate
 ];
 
 // Colores pastel para segmentos (se ciclan)
