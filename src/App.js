@@ -407,6 +407,9 @@ export default function App() {
   const [bodegaEditId,  setBodegaEditId]   = useState(null); // id del producto en edición inline en bodega
   const [bodegaEditData,setBodegaEditData] = useState({});   // datos en edición
   const [movCajaModal,  setMovCajaModal]   = useState(null); // {prod} — modal movimiento desde bodega
+  const [projDropdown,  setProjDropdown]  = useState(false); // dropdown selector de proyectos
+  const [userDropdown,  setUserDropdown]  = useState(false); // dropdown usuario/cerrar sesión
+  const [bodegaHighlight,setBodegaHighlight]=useState(null); // id producto resaltado en bodega
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -916,19 +919,107 @@ export default function App() {
             Invent<span style={{color:"var(--green-500)"}}>App</span>
           </div>
         </div>
-        {/* Proyecto activo + usuario */}
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {currentProject && (
-            <div style={{fontSize:11,background:"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:20,padding:"3px 10px",color:"var(--green-700)",fontWeight:600,maxWidth:"clamp(60px,22vw,150px)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-              📁 {currentProject.name}
+        {/* ── Header derecho: proyecto + usuario ── */}
+        <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}}>
+
+          {/* Atajos rápidos — solo desktop */}
+          {!isMobile && (
+            <div style={{display:"flex",gap:4,marginRight:4}}>
+              {[
+                {lbl:"📦",title:"Inventario",id:"inventario"},
+                {lbl:"📷",title:"Registrar",id:"registrar"},
+                {lbl:"↕",title:"Movimientos",id:"movimientos"},
+              ].map(({lbl,title,id})=>(
+                <button key={id} onClick={()=>goTab(id)} title={title}
+                  style={{background:tab===id?"var(--green-50)":"none",border:"1.5px solid",borderColor:tab===id?"var(--green-300)":"var(--gray-200)",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",color:tab===id?"var(--green-700)":"var(--gray-500)",transition:"all .15s"}}
+                  onMouseEnter={e=>{if(tab!==id){e.currentTarget.style.background="var(--gray-50)";e.currentTarget.style.borderColor="var(--gray-300)";}}}
+                  onMouseLeave={e=>{if(tab!==id){e.currentTarget.style.background="none";e.currentTarget.style.borderColor="var(--gray-200)";}}}
+                >{lbl}</button>
+              ))}
             </div>
           )}
-          <div style={{fontSize:12,color:"var(--gray-500)",display:"flex",alignItems:"center",gap:4,minWidth:0,overflow:"hidden"}}>
-            <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green-500)",display:"inline-block",flexShrink:0}}/>
-            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,maxWidth:"clamp(50px,18vw,120px)"}}>{userDoc?.name||user.email?.split("@")[0]}</span>
-            <span style={{fontSize:9,background:"var(--green-100)",color:"var(--green-700)",padding:"2px 5px",borderRadius:20,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{userDoc?.role||"consultor"}</span>
+
+          {/* Botón Home */}
+          <button onClick={()=>goTab("dashboard")} title="Ir al Dashboard"
+            style={{background:tab==="dashboard"?"var(--green-50)":"none",border:"1.5px solid",borderColor:tab==="dashboard"?"var(--green-300)":"var(--gray-200)",borderRadius:8,width:32,height:32,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all .15s",flexShrink:0}}
+            onMouseEnter={e=>{if(tab!=="dashboard"){e.currentTarget.style.background="var(--gray-50)";}}}
+            onMouseLeave={e=>{if(tab!=="dashboard"){e.currentTarget.style.background="none";}}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={tab==="dashboard"?"var(--green-700)":"var(--gray-500)"} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+
+          {/* Dropdown proyecto */}
+          {currentProject && (
+            <div style={{position:"relative"}}>
+              <button onClick={()=>{setProjDropdown(d=>!d);setUserDropdown(false);}}
+                style={{fontSize:11,background:projDropdown?"var(--green-100)":"var(--green-50)",border:"1px solid var(--green-200)",borderRadius:20,padding:"5px 10px",color:"var(--green-700)",fontWeight:700,maxWidth:"clamp(60px,22vw,150px)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",cursor:"pointer",display:"flex",alignItems:"center",gap:5,transition:"all .15s"}}>
+                <span>📁</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentProject.name}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{flexShrink:0,transform:projDropdown?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              {projDropdown && (
+                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",border:"1px solid var(--gray-100)",minWidth:200,zIndex:300,overflow:"hidden"}}>
+                  <div style={{padding:"10px 14px 6px",fontSize:10,fontWeight:700,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5}}>Proyectos</div>
+                  {projects.map(pr=>(
+                    <button key={pr.id} onClick={()=>{setCurrentProject(pr);setProjDropdown(false);}}
+                      style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:pr.id===currentProject.id?"var(--green-50)":"none",border:"none",cursor:"pointer",textAlign:"left",transition:"background .12s"}}
+                      onMouseEnter={e=>{if(pr.id!==currentProject.id)e.currentTarget.style.background="var(--gray-50)";}}
+                      onMouseLeave={e=>{if(pr.id!==currentProject.id)e.currentTarget.style.background="none";}}>
+                      <div style={{width:28,height:28,borderRadius:8,background:pr.id===currentProject.id?"var(--green-600)":"var(--gray-200)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>
+                        {pr.id===currentProject.id?"✓":"📁"}
+                      </div>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:pr.id===currentProject.id?700:500,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:pr.id===currentProject.id?"var(--green-800)":"var(--gray-800)"}}>{pr.name}</div>
+                      </div>
+                    </button>
+                  ))}
+                  <div style={{borderTop:"1px solid var(--gray-100)",margin:"4px 0"}}/>
+                  <button onClick={()=>{setProjDropdown(false);setProjModal(true);}}
+                    style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",cursor:"pointer",textAlign:"left",color:"var(--green-700)",fontWeight:600,fontSize:13}}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--green-50)"}
+                    onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                    <div style={{width:28,height:28,borderRadius:8,background:"var(--green-100)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>+</div>
+                    Nuevo proyecto
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Dropdown usuario */}
+          <div style={{position:"relative"}}>
+            <button onClick={()=>{setUserDropdown(d=>!d);setProjDropdown(false);}}
+              style={{display:"flex",alignItems:"center",gap:5,background:userDropdown?"var(--gray-100)":"none",border:"1.5px solid",borderColor:userDropdown?"var(--gray-300)":"var(--gray-200)",borderRadius:20,padding:"4px 10px 4px 5px",cursor:"pointer",transition:"all .15s",maxWidth:160}}>
+              <div style={{width:24,height:24,borderRadius:"50%",background:"var(--green-600)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:11,fontWeight:800,flexShrink:0}}>
+                {(userDoc?.name||user.email||"U")[0].toUpperCase()}
+              </div>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--gray-700)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:80}}>{userDoc?.name||user.email?.split("@")[0]}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" strokeWidth="2.5" style={{flexShrink:0,transform:userDropdown?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            {userDropdown && (
+              <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",border:"1px solid var(--gray-100)",minWidth:180,zIndex:300,overflow:"hidden"}}>
+                <div style={{padding:"12px 14px 8px",borderBottom:"1px solid var(--gray-100)"}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--gray-900)"}}>{userDoc?.name||user.email?.split("@")[0]}</div>
+                  <div style={{fontSize:11,color:"var(--gray-400)",marginTop:2}}>{user.email}</div>
+                  <div style={{marginTop:4,display:"inline-block",fontSize:10,background:"var(--green-100)",color:"var(--green-700)",borderRadius:20,padding:"2px 8px",fontWeight:700}}>{userDoc?.role||"consultor"}</div>
+                </div>
+                <button onClick={()=>{setUserDropdown(false);signOut(auth);}}
+                  style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",background:"none",border:"none",cursor:"pointer",textAlign:"left",color:"#dc2626",fontWeight:600,fontSize:13,transition:"background .12s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#fef2f2"}
+                  onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Cerrar sesión
+                </button>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Overlay para cerrar dropdowns al tocar fuera */}
+        {(projDropdown||userDropdown) && (
+          <div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setProjDropdown(false);setUserDropdown(false);}}/>
+        )}
       </header>
 
 
@@ -1466,13 +1557,20 @@ export default function App() {
                               <button key={p.id} onClick={()=>{
                                 setAddSearch("");
                                 if (p.armario) {
-                                  // Hacer scroll hasta la tarjeta del armario
+                                  // Abrir la vista del armario y resaltar el producto
+                                  const armItems = products.filter(x=>x.armario===p.armario);
+                                  const armBySegmento = {};
+                                  armItems.forEach(x=>{const s=x.segmento||"General";if(!armBySegmento[s])armBySegmento[s]=[];armBySegmento[s].push(x);});
+                                  const armSegs = Object.keys(armBySegmento).sort();
+                                  const armAi = [...new Set(products.filter(x=>x.armario).map(x=>x.armario))].sort().indexOf(p.armario);
+                                  const armAc = ARM_COLORS[armAi % ARM_COLORS.length];
+                                  setArmarioVista({armario:p.armario,items:armItems,bySegmento:armBySegmento,segs:armSegs,ac:armAc});
+                                  setBodegaHighlight(p.id);
                                   setTimeout(()=>{
-                                    const el = document.getElementById("arm-card-"+p.armario.replace(/\s/g,"-"));
+                                    const el = document.getElementById("bodega-prod-"+p.id);
                                     el?.scrollIntoView({behavior:"smooth",block:"center"});
-                                    // Highlight visual
-                                    if(el){el.style.outline="3px solid var(--green-500)";setTimeout(()=>el.style.outline="",2000);}
-                                  }, 100);
+                                  }, 300);
+                                  setTimeout(()=>setBodegaHighlight(null), 2500);
                                 }
                               }} style={{
                                 display:"flex",alignItems:"center",gap:12,width:"100%",
@@ -1598,33 +1696,45 @@ export default function App() {
                               </button>
                             </div>
 
-                            {/* Segmentos */}
-                            <div style={{padding:10,display:"flex",flexDirection:"column",gap:7}}>
-                              {segs.map((seg,si) => {
-                                const sc = SEG_COLORS[si % SEG_COLORS.length];
-                                return (
-                                  <div key={seg} style={{border:`1.5px solid ${sc.border}`,borderRadius:10,overflow:"hidden"}}>
-                                    <div style={{background:sc.bg,padding:"6px 12px",fontSize:11,fontWeight:700,color:sc.text,display:"flex",alignItems:"center",gap:6}}>
-                                      <span style={{background:sc.num,color:"#fff",width:18,height:18,borderRadius:5,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{si+1}</span>
+                            {/* ── Descripción de la caja (segmentos como resumen) ── */}
+                            <div style={{padding:"10px 12px 12px",display:"flex",flexDirection:"column",gap:6}}>
+                              {/* KPIs rápidos */}
+                              <div style={{display:"flex",gap:8,marginBottom:4}}>
+                                <div style={{flex:1,textAlign:"center",padding:"7px 4px",background:"var(--gray-50)",borderRadius:8}}>
+                                  <div style={{fontSize:16,fontWeight:800,color:"var(--gray-800)"}}>{items.length}</div>
+                                  <div style={{fontSize:9,color:"var(--gray-400)",fontWeight:600,textTransform:"uppercase"}}>Productos</div>
+                                </div>
+                                <div style={{flex:1,textAlign:"center",padding:"7px 4px",background:items.filter(p=>p.stock===0).length>0?"#fef2f2":"var(--gray-50)",borderRadius:8}}>
+                                  <div style={{fontSize:16,fontWeight:800,color:items.filter(p=>p.stock===0).length>0?"#dc2626":"var(--gray-800)"}}>{items.filter(p=>p.stock===0).length}</div>
+                                  <div style={{fontSize:9,color:"var(--gray-400)",fontWeight:600,textTransform:"uppercase"}}>Sin stock</div>
+                                </div>
+                                <div style={{flex:1,textAlign:"center",padding:"7px 4px",background:"var(--gray-50)",borderRadius:8}}>
+                                  <div style={{fontSize:16,fontWeight:800,color:"var(--gray-800)"}}>{segs.length}</div>
+                                  <div style={{fontSize:9,color:"var(--gray-400)",fontWeight:600,textTransform:"uppercase"}}>Secciones</div>
+                                </div>
+                              </div>
+                              {/* Pills de segmentos */}
+                              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                                {segs.map((seg,si)=>{
+                                  const sc = SEG_COLORS[si % SEG_COLORS.length];
+                                  const cnt = bySegmento[seg].length;
+                                  const lowStock = bySegmento[seg].filter(p=>p.stock===0).length;
+                                  return (
+                                    <div key={seg} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:20,background:sc.bg,border:`1px solid ${sc.border}`,fontSize:11,fontWeight:600,color:sc.text}}>
                                       {seg}
-                                      <span style={{marginLeft:"auto",fontSize:10,color:sc.text,opacity:.6}}>{bySegmento[seg].length} ítem{bySegmento[seg].length>1?"s":""}</span>
+                                      <span style={{background:sc.num,color:"#fff",borderRadius:20,padding:"0 5px",fontSize:10,fontWeight:800,minWidth:16,textAlign:"center"}}>{cnt}</span>
+                                      {lowStock>0 && <span style={{background:"#ef4444",color:"#fff",borderRadius:20,padding:"0 4px",fontSize:9,fontWeight:800}}>!{lowStock}</span>}
                                     </div>
-                                    <div style={{padding:"7px 10px",display:"flex",flexWrap:"wrap",gap:5}}>
-                                      {bySegmento[seg].map(p => {
-                                        const stBg  = p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
-                                        const stCol = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
-                                        return (
-                                          <div key={p.id} title={`Stock: ${p.stock} | Lote: ${p.lote||"—"}`}
-                                            style={{padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:stBg,color:stCol,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                            {p.nombre.length>20?p.nombre.slice(0,18)+"…":p.nombre}
-                                            <span style={{marginLeft:3,opacity:.7}}>×{p.stock}</span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              </div>
+                              {/* Botón ver detalle */}
+                              <button onClick={()=>setArmarioVista({armario,items,bySegmento,segs,ac})}
+                                style={{marginTop:4,padding:"8px",background:"var(--gray-50)",border:"1px dashed var(--gray-200)",borderRadius:10,cursor:"pointer",fontSize:12,color:"var(--gray-500)",fontWeight:600,textAlign:"center",transition:"all .15s"}}
+                                onMouseEnter={e=>{e.currentTarget.style.background=ac.bg;e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor=ac.bg;}}
+                                onMouseLeave={e=>{e.currentTarget.style.background="var(--gray-50)";e.currentTarget.style.color="var(--gray-500)";e.currentTarget.style.borderColor="var(--gray-200)";}}>
+                                Ver contenido completo →
+                              </button>
                             </div>
                           </div>
                         );
@@ -1762,11 +1872,12 @@ export default function App() {
                               const stBd  = p.stock===0?"#fecaca":p.stock<=p.minimo?"#fde68a":"#bbf7d0";
                               const isEditing = bodegaEditId === p.id;
                               return (
-                                <div key={p.id} style={{
+                                <div key={p.id} id={"bodega-prod-"+p.id} style={{
                                   borderRadius:12, overflow:"hidden",
-                                  border: isEditing ? "2px solid var(--green-400)" : "1px solid #f0f0f0",
-                                  background: isEditing ? "#f0fdf4" : "#fafafa",
-                                  transition:"all .15s",
+                                  border: bodegaHighlight===p.id ? "2.5px solid var(--green-500)" : isEditing ? "2px solid var(--green-400)" : "1px solid #f0f0f0",
+                                  background: bodegaHighlight===p.id ? "#dcfce7" : isEditing ? "#f0fdf4" : "#fafafa",
+                                  transition:"all .3s",
+                                  boxShadow: bodegaHighlight===p.id ? "0 0 0 4px rgba(34,197,94,.2)" : "none",
                                 }}>
                                   {/* Fila principal */}
                                   <div style={{display:"flex", alignItems:"center", gap:10, padding:"10px 12px"}}>
