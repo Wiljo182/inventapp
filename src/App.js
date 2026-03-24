@@ -10,7 +10,22 @@ import {
 } from "firebase/auth";
 
 // ─── CONSTANTES ──────────────────────────────────────────────────────────────
-const CATS    = ["Granos y Cereales","Lácteos","Bebidas","Aseo Personal","Limpieza Hogar","Snacks","Enlatados","Panadería","Carnes y Embutidos","Frutas y Verduras","Condimentos","Otro"];
+// Categorías por tipo de proyecto — se detectan dinámicamente
+const CATS_RETAIL = ["Granos y Cereales","Lácteos","Bebidas","Aseo Personal","Limpieza Hogar","Snacks","Enlatados","Panadería","Carnes y Embutidos","Frutas y Verduras","Condimentos","Otro"];
+const CATS_CAFE   = ["Suministros","Equipos","Herramientas de apoyo","Herramientas y Elementos Decorativos","Jarras y recipientes","Limpieza y mantenimiento","Maquinas y equipos principales","Utensilios para espresso","Otros Equipos de apoyo","General","Otro"];
+const CATS_GENERAL = ["Suministros","Equipos","Materiales","Herramientas","Decoración","Limpieza","Otros"];
+
+function getCats(projectName, products) {
+  // Detectar por nombre del proyecto
+  const n = (projectName||"").toLowerCase();
+  if (n.includes("café") || n.includes("cafe") || n.includes("coffee") || n.includes("wiljo")) return CATS_CAFE;
+  if (n.includes("tienda") || n.includes("market") || n.includes("minimarket") || n.includes("prueba")) return CATS_RETAIL;
+  // Detectar por categorías existentes en los productos
+  const existing = [...new Set((products||[]).map(p=>p.categoria).filter(Boolean))];
+  if (existing.some(c => CATS_CAFE.includes(c))) return [...new Set([...existing, ...CATS_CAFE])];
+  if (existing.some(c => CATS_RETAIL.includes(c))) return [...new Set([...existing, ...CATS_RETAIL])];
+  return [...new Set([...existing, ...CATS_GENERAL])];
+}
 const ENVASES = ["Bolsa","Botella","Caja","Lata","Tarro","Doypack","Sachet","Unidad"];
 const UNITS   = ["unid","kg","g","lt","ml","paq"];
 
@@ -371,6 +386,9 @@ export default function App() {
   const [isMobile,      setIsMobile]      = useState(window.innerWidth < 640);
   const [editQuickId,   setEditQuickId]   = useState(null);  // edición rápida desde bodega
   const [armarioVista,  setArmarioVista]  = useState(null);  // vista ampliada de armario
+  const [addToCajaModal,setAddToCajaModal] = useState(null); // {armario, segmento} — modal agregar producto a caja
+  const [addSearch,     setAddSearch]      = useState("");   // búsqueda en modal agregar
+  const [addSegmento,   setAddSegmento]    = useState("");   // segmento seleccionado
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -571,6 +589,67 @@ export default function App() {
       // Por ahora: marcar como desactivado en Firestore y bloquear en el login
       await updateDoc(doc(db,"users",uid),{ disabled: true, disabledAt: new Date().toISOString(), disabledBy: user.uid });
       showToast(`🚫 Cuenta de ${email} desactivada`,"success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Asignar/mover producto a caja desde bodega ──
+  async function asignarProductoACaja(prod, armario, segmento) {
+    try {
+      await import("firebase/firestore").then(async ({updateDoc, doc: fDoc}) => {
+        // fallback si el import dinámico falla
+      }).catch(()=>{});
+      // Usar updateDoc ya importado en el scope principal
+      const { updateDoc: upd, doc: fDoc } = await Promise.resolve({
+        updateDoc: (ref, data) => {
+          // updateDoc está disponible en el scope del componente
+          return window.__inventapp_updateDoc ? window.__inventapp_updateDoc(ref, data) : Promise.resolve();
+        },
+        doc: null
+      });
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`, prod.id), {armario, segmento});
+      setProducts(prev => prev.map(p => p.id===prod.id ? {...p, armario, segmento} : p));
+      showToast(`✅ ${prod.nombre} → ${armario} / ${segmento}`, "success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Crear y asignar nuevo producto a caja ──
+  async function crearYAsignarACaja(nombre, armario, segmento) {
+    if (!nombre.trim() || !currentProject) return;
+    try {
+      const data = {
+        nombre: nombre.trim(), codigo:"", codigoBarras:"", 
+        categoria: getCats(currentProject?.name, products)[0] || "General",
+        envase:"Unidad", stock:1, minimo:1,
+        precioCompra:0, precioVenta:0, proveedor:"", unidad:"unid",
+        nota:"", fechaVencimiento:"", lote:"",
+        armario, segmento: segmento || "General",
+        fechaReg: new Date().toISOString()
+      };
+      const ref = await addDoc(collection(db,`projects/${currentProject.id}/products`), data);
+      const np = {id: ref.id, ...data};
+      setProducts(prev=>[np,...prev]);
+      showToast(`✅ "${nombre}" agregado a ${armario}`, "success");
+      setAddToCajaModal(null); setAddSearch(""); setAddSegmento("");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Mover producto existente a otra caja ──
+  async function moverProductoACaja(prod, armario, segmento) {
+    try {
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`, prod.id), {armario, segmento: segmento||prod.segmento});
+      setProducts(prev => prev.map(p => p.id===prod.id ? {...p, armario, segmento:segmento||prod.segmento} : p));
+      showToast(`✅ "${prod.nombre}" movido a ${armario}`, "success");
+      setAddToCajaModal(null); setAddSearch(""); setAddSegmento("");
+      // Actualizar armarioVista si está abierta
+      if (armarioVista?.armario === armario) {
+        setArmarioVista(av => {
+          if (!av) return av;
+          const newItems = [...av.items, {...prod, armario, segmento:segmento||prod.segmento}];
+          const bySegmento = {};
+          newItems.forEach(p => { const s = p.segmento||"General"; if(!bySegmento[s]) bySegmento[s]=[]; bySegmento[s].push(p); });
+          return {...av, items:newItems, bySegmento, segs:Object.keys(bySegmento).sort()};
+        });
+      }
     } catch(e) { showToast("❌ "+e.message,"warning"); }
   }
 
@@ -928,10 +1007,61 @@ export default function App() {
                     <input id="form-nombre" style={S.inp} value={form.nombre} placeholder="Ej: Papi Papa Delgadas 60g" onChange={e=>setForm(f=>({...f,nombre:e.target.value}))}/>
                   </div>
                   <div style={S.fGrp}><label style={S.lbl}>Código Interno</label><input style={S.inp} value={form.codigo} placeholder="SNA-001" onChange={e=>setForm(f=>({...f,codigo:e.target.value}))}/></div>
-                  <div style={S.fGrp}><label style={S.lbl}>Código de Barras</label><input style={S.inp} value={form.codigoBarras} placeholder="7702020012345" onChange={e=>setForm(f=>({...f,codigoBarras:e.target.value}))}/></div>
+                  <div style={S.fGrp}>
+                    <label style={S.lbl}>Código de Barras</label>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <input style={{...S.inp,flex:1}} value={form.codigoBarras} placeholder="7702020012345" onChange={e=>setForm(f=>({...f,codigoBarras:e.target.value}))}/>
+                      <label style={{
+                        display:"inline-flex",alignItems:"center",gap:6,
+                        padding:"9px 14px",borderRadius:"var(--radius)",
+                        background:"var(--gray-800)",color:"#fff",
+                        fontSize:12,fontWeight:600,cursor:"pointer",
+                        flexShrink:0,whiteSpace:"nowrap",
+                        border:"none",transition:"background .15s",
+                      }}
+                      title="Escanear solo el código de barras"
+                      onMouseEnter={e=>e.currentTarget.style.background="#111"}
+                      onMouseLeave={e=>e.currentTarget.style.background="var(--gray-800)"}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="4" height="18" rx="1"/><rect x="9" y="3" width="2" height="18" rx="1"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="19" y="3" width="2" height="18" rx="1"/>
+                        </svg>
+                        Escanear código
+                        <input type="file" accept="image/*" capture="environment" onChange={e=>{
+                          if(!e.target.files[0]) return;
+                          const file = e.target.files[0];
+                          e.target.value="";
+                          // Usar Claude Vision solo para extraer código de barras
+                          const r = new FileReader();
+                          r.onload = async ev => {
+                            const b64 = ev.target.result.split(",")[1];
+                            try {
+                              const res = await fetch("/.netlify/functions/scan-product", {
+                                method:"POST", headers:{"Content-Type":"application/json"},
+                                body: JSON.stringify({imageBase64:b64, mimeType:"image/jpeg", barcodeOnly:true})
+                              });
+                              const data = await res.json();
+                              const cb = data.product?.codigoBarras || data.codigoBarras;
+                              if (cb && cb !== "N/A" && cb.length > 4) {
+                                setForm(f=>({...f, codigoBarras:cb}));
+                              } else {
+                                alert("No se detectó código de barras. Intenta con mejor iluminación o más cerca.");
+                              }
+                            } catch(ex) { alert("Error al escanear: "+ex.message); }
+                          };
+                          r.readAsDataURL(file);
+                        }}/>
+                      </label>
+                    </div>
+                    {form.codigoBarras && (
+                      <div style={{fontSize:11,color:"var(--gray-400)",marginTop:4,display:"flex",alignItems:"center",gap:4}}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        Código detectado: <strong style={{color:"var(--gray-700)"}}>{form.codigoBarras}</strong>
+                      </div>
+                    )}
+                  </div>
                   <div style={S.fGrp}><label style={S.lbl}>Categoría *</label>
                     <select style={S.inp} value={form.categoria} onChange={e=>setForm(f=>({...f,categoria:e.target.value}))}>
-                      <option value="">Seleccionar...</option>{CATS.map(x=><option key={x}>{x}</option>)}
+                      <option value="">Seleccionar...</option>{getCats(currentProject?.name, products).map(x=><option key={x}>{x}</option>)}
                     </select>
                   </div>
                   <div style={S.fGrp}><label style={S.lbl}>Envase</label>
@@ -996,7 +1126,7 @@ export default function App() {
                 <div><div style={S.secT}>Inventario</div><div style={S.secS}>{products.length} productos · {currentProject.name}</div></div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <select style={{...S.inp,width:"auto",fontSize:12,padding:"7px 10px"}} value={catFilter} onChange={e=>setCatF(e.target.value)}>
-                    <option value="">Todas las categorías</option>{CATS.map(x=><option key={x}>{x}</option>)}
+                    <option value="">Todas las categorías</option>{getCats(currentProject?.name, products).map(x=><option key={x}>{x}</option>)}
                   </select>
                   {isConsultor && <button style={S.btn("var(--green-600)")} onClick={()=>setTab("registrar")}>+ Registrar</button>}
                 </div>
@@ -1172,8 +1302,16 @@ export default function App() {
           {/* ════ MAPA DE BODEGA ════ */}
           {tab==="bodega" && isConsultor && (
             <div className="fadeUp">
-              <div style={S.secH}>
-                <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Toca un armario para ver detalle completo</div></div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+                <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Toca un armario para ver detalle</div></div>
+                <button onClick={()=>setAddToCajaModal({armario:"",segmento:""})} style={{
+                  display:"flex",alignItems:"center",gap:8,
+                  padding:"10px 18px",background:"var(--green-700)",color:"#fff",
+                  border:"none",borderRadius:12,cursor:"pointer",
+                  fontSize:13,fontWeight:700,boxShadow:"0 2px 8px rgba(21,128,61,.3)",
+                }}>
+                  <span style={{fontSize:18,lineHeight:1}}>+</span> Agregar producto
+                </button>
               </div>
               {(() => {
                 const byArmario = {};
@@ -1235,16 +1373,29 @@ export default function App() {
                         const segs = Object.keys(bySegmento).sort();
                         return (
                           <div key={armario} style={{background:"var(--white)",borderRadius:16,overflow:"hidden",boxShadow:"var(--shadow-sm)",border:`1.5px solid ${ac.border}`}}>
-                            {/* Cabecera armario — clickeable para vista amplia */}
-                            <button onClick={()=>setArmarioVista({armario,items,bySegmento,segs,ac})}
-                              style={{width:"100%",background:ac.bg,padding:"14px 16px",display:"flex",alignItems:"center",gap:10,border:"none",cursor:"pointer",textAlign:"left"}}>
-                              <div style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🗄</div>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontWeight:800,fontSize:16,color:ac.text}}>{armario}</div>
-                                <div style={{fontSize:11,color:"rgba(255,255,255,0.75)"}}>{items.length} producto{items.length>1?"s":""} · {segs.length} segmento{segs.length>1?"s":""}</div>
-                              </div>
-                              <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",flexShrink:0}}>ver →</span>
-                            </button>
+                            {/* Cabecera armario */}
+                            <div style={{display:"flex",alignItems:"stretch"}}>
+                              <button onClick={()=>setArmarioVista({armario,items,bySegmento,segs,ac})}
+                                style={{flex:1,background:ac.bg,padding:"14px 16px",display:"flex",alignItems:"center",gap:10,border:"none",cursor:"pointer",textAlign:"left",borderRadius:"16px 0 0 0"}}>
+                                <div style={{width:38,height:38,borderRadius:10,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🗄</div>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontWeight:800,fontSize:16,color:ac.text}}>{armario}</div>
+                                  <div style={{fontSize:11,color:"rgba(255,255,255,0.75)"}}>{items.length} producto{items.length>1?"s":""} · {segs.length} segmento{segs.length>1?"s":""}</div>
+                                </div>
+                                <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",flexShrink:0}}>ver →</span>
+                              </button>
+                              {/* Botón + para agregar a esta caja */}
+                              <button onClick={e=>{e.stopPropagation();setAddToCajaModal({armario,segmento:""});setAddSegmento("");setAddSearch("");}}
+                                style={{background:"rgba(255,255,255,0.18)",border:"none",borderLeft:`1px solid rgba(255,255,255,0.15)`,cursor:"pointer",
+                                  padding:"0 16px",color:"#fff",fontSize:22,fontWeight:300,display:"flex",alignItems:"center",justifyContent:"center",
+                                  borderRadius:"0 16px 0 0",flexShrink:0,minWidth:44,transition:"background .15s"}}
+                                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.28)"}
+                                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.18)"}
+                                title={`Agregar producto a ${armario}`}>
+                                +
+                              </button>
+                            </div>
+
                             {/* Segmentos */}
                             <div style={{padding:10,display:"flex",flexDirection:"column",gap:7}}>
                               {segs.map((seg,si) => {
@@ -1318,12 +1469,18 @@ export default function App() {
                         {armarioVista.items.length} producto{armarioVista.items.length>1?"s":""} · {armarioVista.segs.length} segmento{armarioVista.segs.length>1?"s":""}
                       </div>
                     </div>
-                    <button onClick={()=>setArmarioVista(null)} style={{
-                      background:"rgba(255,255,255,0.18)", border:"none",
-                      color:"#fff", width:36, height:36, borderRadius:10,
-                      cursor:"pointer", fontSize:16, display:"flex",
-                      alignItems:"center", justifyContent:"center", flexShrink:0,
-                    }}>✕</button>
+                    <div style={{display:"flex",gap:8,flexShrink:0}}>
+                      <button onClick={()=>{setAddToCajaModal({armario:armarioVista.armario,segmento:""});setAddSearch("");setAddSegmento("");}}
+                        style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",height:36,padding:"0 14px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{fontSize:18,lineHeight:1}}>+</span> Agregar
+                      </button>
+                      <button onClick={()=>setArmarioVista(null)} style={{
+                        background:"rgba(255,255,255,0.18)", border:"none",
+                        color:"#fff", width:36, height:36, borderRadius:10,
+                        cursor:"pointer", fontSize:16, display:"flex",
+                        alignItems:"center", justifyContent:"center", flexShrink:0,
+                      }}>✕</button>
+                    </div>
                   </div>
 
                   {/* ── Resumen rápido ── */}
@@ -1640,6 +1797,114 @@ export default function App() {
         </>
       )}
 
+      {/* ══════════════════════════════════════════
+           MODAL — AGREGAR PRODUCTO A CAJA
+      ══════════════════════════════════════════ */}
+      {addToCajaModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+          onClick={e=>{if(e.target===e.currentTarget){setAddToCajaModal(null);setAddSearch("");setAddSegmento("");}}}>
+          <div style={{
+            background:"#fff", width:"100%", maxWidth:560,
+            borderRadius:"20px 20px 0 0",
+            maxHeight:"85vh", display:"flex", flexDirection:"column",
+            boxShadow:"0 -8px 40px rgba(0,0,0,0.18)",
+          }}>
+            {/* Header */}
+            <div style={{padding:"20px 20px 0",flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <div>
+                  <div style={{fontWeight:800,fontSize:17,color:"var(--gray-900)"}}>
+                    {addToCajaModal.armario ? `Agregar a ${addToCajaModal.armario}` : "Agregar producto a bodega"}
+                  </div>
+                  <div style={{fontSize:12,color:"var(--gray-400)",marginTop:2}}>Busca un producto existente o crea uno nuevo</div>
+                </div>
+                <button onClick={()=>{setAddToCajaModal(null);setAddSearch("");setAddSegmento("");}}
+                  style={{background:"var(--gray-100)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              </div>
+              <div style={{position:"relative",marginBottom:12}}>
+                <svg style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--gray-400)",pointerEvents:"none"}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input autoFocus style={{...S.inp,paddingLeft:38}} placeholder="Escribe el nombre del producto..."
+                  value={addSearch} onChange={e=>setAddSearch(e.target.value)}/>
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                <select value={addSegmento} onChange={e=>setAddSegmento(e.target.value)}
+                  style={{...S.inp,flex:1,fontSize:12,padding:"7px 10px"}}>
+                  <option value="">— Segmento / Fila —</option>
+                  {[...new Set(products.filter(p=>addToCajaModal.armario?p.armario===addToCajaModal.armario:true).map(p=>p.segmento).filter(Boolean))].sort().map(s=>(
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <button onClick={()=>{const s=prompt("Nombre del nuevo segmento/fila:");if(s?.trim())setAddSegmento(s.trim());}}
+                  style={{...S.bSm("var(--green-100)","var(--green-800)"),flexShrink:0,fontSize:11}}>+ Segmento</button>
+              </div>
+            </div>
+            <div style={{overflowY:"auto",flex:1,padding:"8px 20px 20px"}}>
+              {(()=>{
+                const q = addSearch.trim().toLowerCase();
+                const armarioTarget = addToCajaModal.armario;
+                const enCajaIds = new Set(products.filter(p=>p.armario===armarioTarget).map(p=>p.id));
+                const coincidencias = q.length>0 ? products.filter(p=>!enCajaIds.has(p.id)&&(
+                  p.nombre?.toLowerCase().includes(q)||p.codigo?.toLowerCase().includes(q)||p.codigoBarras?.includes(q))) : [];
+                const esNuevo = q.length>1 && !products.some(p=>p.nombre?.toLowerCase()===q);
+                return (
+                  <div>
+                    {esNuevo && (
+                      <div style={{marginBottom:10}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.4,marginBottom:6}}>Crear nuevo</div>
+                        <button onClick={()=>crearYAsignarACaja(addSearch,addToCajaModal.armario||"Sin asignar",addSegmento||"General")}
+                          style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",background:"var(--green-50)",border:"1.5px solid var(--green-300)",borderRadius:12,cursor:"pointer",textAlign:"left"}}
+                          onMouseEnter={e=>e.currentTarget.style.background="var(--green-100)"}
+                          onMouseLeave={e=>e.currentTarget.style.background="var(--green-50)"}>
+                          <div style={{width:36,height:36,borderRadius:10,background:"var(--green-600)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:22,flexShrink:0}}>+</div>
+                          <div>
+                            <div style={{fontWeight:700,fontSize:14,color:"var(--green-800)"}}>Crear "{addSearch}"</div>
+                            <div style={{fontSize:11,color:"var(--green-600)",marginTop:2}}>→ {addToCajaModal.armario||"Sin asignar"} / {addSegmento||"General"}</div>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                    {coincidencias.length>0 && (
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.4,marginBottom:6}}>
+                          {armarioTarget?`Mover a ${armarioTarget}`:"Asignar"} ({coincidencias.length})
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          {coincidencias.slice(0,8).map(p=>{
+                            const stBg=p.stock===0?"#fee2e2":p.stock<=p.minimo?"#fef3c7":"#dcfce7";
+                            const stCol=p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
+                            return (
+                              <button key={p.id} onClick={()=>moverProductoACaja(p,addToCajaModal.armario||p.armario||"Sin asignar",addSegmento||p.segmento)}
+                                style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"#fafafa",border:"1px solid var(--gray-100)",borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%"}}
+                                onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"}
+                                onMouseLeave={e=>e.currentTarget.style.background="#fafafa"}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
+                                  <div style={{fontSize:11,color:"var(--gray-400)",marginTop:2}}>
+                                    {p.armario?`📦 ${p.armario}${p.segmento?` / ${p.segmento}`:""}` : "Sin ubicar"} · {p.categoria}
+                                  </div>
+                                </div>
+                                <span style={{padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:700,background:stBg,color:stCol,flexShrink:0}}>×{p.stock}</span>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green-600)" strokeWidth="2.5" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {q.length===0 && <div style={{textAlign:"center",padding:"28px 0",color:"var(--gray-300)"}}>
+                      <div style={{fontSize:32,marginBottom:8}}>🔍</div>
+                      <div style={{fontSize:13,fontWeight:500}}>Escribe para buscar un producto</div>
+                      <div style={{fontSize:11,marginTop:4,color:"var(--gray-400)"}}>o escribe un nombre nuevo para crearlo</div>
+                    </div>}
+                    {q.length>0&&coincidencias.length===0&&!esNuevo&&<div style={{textAlign:"center",padding:"20px 0",color:"var(--gray-400)",fontSize:13}}>Sin coincidencias</div>}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ════ MODAL GESTIÓN DE EQUIPO ════ */}
       {teamModal && (
         <div style={S.ovrl} onClick={e=>{if(e.target===e.currentTarget)setTeamModal(false)}}>
@@ -1826,7 +2091,7 @@ function MasterForm({ currentProject, onSave, onClose }) {
         <div style={S2.fGrp}><label style={S2.lbl}>Código de Barras</label><input style={S2.inp} value={f.codigoBarras} placeholder="7702020012345" onChange={e=>setF(x=>({...x,codigoBarras:e.target.value}))}/></div>
         <div style={S2.fGrp}><label style={S2.lbl}>Categoría</label>
           <select style={S2.inp} value={f.categoria} onChange={e=>setF(x=>({...x,categoria:e.target.value}))}>
-            <option value="">Seleccionar...</option>{CATS.map(c=><option key={c}>{c}</option>)}
+            <option value="">Seleccionar...</option>{getCats(currentProject?.name, []).map(c=><option key={c}>{c}</option>)}
           </select>
         </div>
         <div style={S2.fGrp}><label style={S2.lbl}>Precio Compra (COP)</label><input style={S2.inp} type="number" value={f.precioCompra} placeholder="0" onChange={e=>setF(x=>({...x,precioCompra:e.target.value}))}/></div>
