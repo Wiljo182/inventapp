@@ -595,17 +595,6 @@ export default function App() {
   // ── Asignar/mover producto a caja desde bodega ──
   async function asignarProductoACaja(prod, armario, segmento) {
     try {
-      await import("firebase/firestore").then(async ({updateDoc, doc: fDoc}) => {
-        // fallback si el import dinámico falla
-      }).catch(()=>{});
-      // Usar updateDoc ya importado en el scope principal
-      const { updateDoc: upd, doc: fDoc } = await Promise.resolve({
-        updateDoc: (ref, data) => {
-          // updateDoc está disponible en el scope del componente
-          return window.__inventapp_updateDoc ? window.__inventapp_updateDoc(ref, data) : Promise.resolve();
-        },
-        doc: null
-      });
       await updateDoc(doc(db,`projects/${currentProject.id}/products`, prod.id), {armario, segmento});
       setProducts(prev => prev.map(p => p.id===prod.id ? {...p, armario, segmento} : p));
       showToast(`✅ ${prod.nombre} → ${armario} / ${segmento}`, "success");
@@ -660,7 +649,7 @@ export default function App() {
       nombre:          prod.nombre        || f.nombre,
       codigo:          prod.codigo        || f.codigo,
       codigoBarras:    prod.codigoBarras  || f.codigoBarras,
-      categoria:       CATS.includes(prod.categoria)   ? prod.categoria  : f.categoria,
+      categoria:       prod.categoria  || f.categoria,
       envase:          ENVASES.includes(prod.envase)   ? prod.envase     : f.envase,
       unidad:          UNITS.includes(prod.unidad)     ? prod.unidad     : f.unidad,
       precioVenta:     prod.precioVenta   ? String(prod.precioVenta)  : f.precioVenta,
@@ -1302,16 +1291,101 @@ export default function App() {
           {/* ════ MAPA DE BODEGA ════ */}
           {tab==="bodega" && isConsultor && (
             <div className="fadeUp">
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
-                <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Toca un armario para ver detalle</div></div>
-                <button onClick={()=>setAddToCajaModal({armario:"",segmento:""})} style={{
-                  display:"flex",alignItems:"center",gap:8,
-                  padding:"10px 18px",background:"var(--green-700)",color:"#fff",
-                  border:"none",borderRadius:12,cursor:"pointer",
-                  fontSize:13,fontWeight:700,boxShadow:"0 2px 8px rgba(21,128,61,.3)",
-                }}>
-                  <span style={{fontSize:18,lineHeight:1}}>+</span> Agregar producto
-                </button>
+              {/* ── Header bodega ── */}
+              <div style={{marginBottom:20}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:14}}>
+                  <div><div style={S.secT}>🗺 Mapa de Bodega</div><div style={S.secS}>Toca un armario para ver detalle</div></div>
+                  <button onClick={()=>{setAddToCajaModal({armario:"",segmento:""});setAddSearch("");setAddSegmento("");}} style={{
+                    display:"flex",alignItems:"center",gap:8,
+                    padding:"10px 18px",background:"var(--green-700)",color:"#fff",
+                    border:"none",borderRadius:12,cursor:"pointer",
+                    fontSize:13,fontWeight:700,boxShadow:"0 2px 8px rgba(21,128,61,.3)",
+                  }}>
+                    <span style={{fontSize:18,lineHeight:1}}>+</span> Agregar producto
+                  </button>
+                </div>
+
+                {/* ── Barra de búsqueda ── */}
+                {products.length > 0 && (
+                  <div style={{position:"relative"}}>
+                    <svg style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--gray-400)",pointerEvents:"none",zIndex:1}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input
+                      style={{...S.inp, paddingLeft:42, paddingRight:16, borderRadius:12, fontSize:14, boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}
+                      placeholder="Buscar producto en bodega..."
+                      value={addSearch}
+                      onChange={e=>setAddSearch(e.target.value)}
+                      onFocus={e=>{e.target.style.boxShadow="0 0 0 3px rgba(21,128,61,.15)";e.target.style.borderColor="var(--green-400)";}}
+                      onBlur={e=>{e.target.style.boxShadow="0 1px 4px rgba(0,0,0,0.06)";e.target.style.borderColor="var(--gray-200)";}}
+                    />
+                    {/* Resultados de búsqueda */}
+                    {addSearch.trim().length > 0 && (()=>{
+                      const q = addSearch.trim().toLowerCase();
+                      const results = products.filter(p =>
+                        p.nombre?.toLowerCase().includes(q) ||
+                        p.codigo?.toLowerCase().includes(q) ||
+                        p.codigoBarras?.includes(q)
+                      ).slice(0, 8);
+                      return results.length > 0 ? (
+                        <div style={{
+                          position:"absolute", top:"calc(100% + 6px)", left:0, right:0,
+                          background:"#fff", borderRadius:14, zIndex:200,
+                          boxShadow:"0 8px 32px rgba(0,0,0,0.14)", border:"1px solid var(--gray-100)",
+                          overflow:"hidden",
+                        }}>
+                          {results.map(p => {
+                            const ai = [...new Set(products.filter(x=>x.armario).map(x=>x.armario))].sort().indexOf(p.armario);
+                            const ac = p.armario ? ARM_COLORS[ai % ARM_COLORS.length] : null;
+                            return (
+                              <button key={p.id} onClick={()=>{
+                                setAddSearch("");
+                                if (p.armario) {
+                                  // Hacer scroll hasta la tarjeta del armario
+                                  setTimeout(()=>{
+                                    const el = document.getElementById("arm-card-"+p.armario.replace(/\s/g,"-"));
+                                    el?.scrollIntoView({behavior:"smooth",block:"center"});
+                                    // Highlight visual
+                                    if(el){el.style.outline="3px solid var(--green-500)";setTimeout(()=>el.style.outline="",2000);}
+                                  }, 100);
+                                }
+                              }} style={{
+                                display:"flex",alignItems:"center",gap:12,width:"100%",
+                                padding:"11px 16px",background:"none",border:"none",
+                                borderBottom:"1px solid var(--gray-50)",cursor:"pointer",
+                                textAlign:"left",transition:"background .12s",
+                              }}
+                              onMouseEnter={e=>e.currentTarget.style.background="#f0fdf4"}
+                              onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                                {/* Dot color categoría */}
+                                <div style={{width:8,height:8,borderRadius:"50%",background:CAT_COLOR[p.categoria]||"#9ca3af",flexShrink:0}}/>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
+                                  <div style={{fontSize:11,color:"var(--gray-400)",marginTop:1}}>{p.categoria||""}</div>
+                                </div>
+                                {/* Pill de ubicación */}
+                                {p.armario ? (
+                                  <div style={{
+                                    display:"flex",alignItems:"center",gap:5,
+                                    background:ac?ac.bg:"var(--gray-700)",
+                                    color:"#fff",borderRadius:20,
+                                    padding:"3px 10px",fontSize:11,fontWeight:700,flexShrink:0,
+                                  }}>
+                                    📦 {p.armario}{p.segmento?` / ${p.segmento}`:""}
+                                  </div>
+                                ) : (
+                                  <span style={{fontSize:11,color:"#f59e0b",fontWeight:600,flexShrink:0}}>Sin ubicar</span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,right:0,background:"#fff",borderRadius:14,zIndex:200,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",border:"1px solid var(--gray-100)",padding:"16px",textAlign:"center",color:"var(--gray-400)",fontSize:13}}>
+                          Sin resultados para "{addSearch}"
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
               {(() => {
                 const byArmario = {};
@@ -1364,6 +1438,7 @@ export default function App() {
                       {ubicados.map((armario, ai) => {
                         const ac = ARM_COLORS[ai % ARM_COLORS.length];
                         const items = byArmario[armario];
+                        const armCardId = "arm-card-"+armario.replace(/\s+/g,"-");
                         const bySegmento = {};
                         items.forEach(p => {
                           const seg = p.segmento || "General";
@@ -1372,7 +1447,7 @@ export default function App() {
                         });
                         const segs = Object.keys(bySegmento).sort();
                         return (
-                          <div key={armario} style={{background:"var(--white)",borderRadius:16,overflow:"hidden",boxShadow:"var(--shadow-sm)",border:`1.5px solid ${ac.border}`}}>
+                          <div key={armario} id={armCardId} style={{background:"var(--white)",borderRadius:16,overflow:"hidden",boxShadow:"var(--shadow-sm)",border:`1.5px solid ${ac.border}`}}>
                             {/* Cabecera armario */}
                             <div style={{display:"flex",alignItems:"stretch"}}>
                               <button onClick={()=>setArmarioVista({armario,items,bySegmento,segs,ac})}
@@ -1384,13 +1459,13 @@ export default function App() {
                                 </div>
                                 <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",flexShrink:0}}>ver →</span>
                               </button>
-                              {/* Botón + para agregar a esta caja */}
+                              {/* Botón + con color del armario */}
                               <button onClick={e=>{e.stopPropagation();setAddToCajaModal({armario,segmento:""});setAddSegmento("");setAddSearch("");}}
-                                style={{background:"rgba(255,255,255,0.18)",border:"none",borderLeft:`1px solid rgba(255,255,255,0.15)`,cursor:"pointer",
-                                  padding:"0 16px",color:"#fff",fontSize:22,fontWeight:300,display:"flex",alignItems:"center",justifyContent:"center",
-                                  borderRadius:"0 16px 0 0",flexShrink:0,minWidth:44,transition:"background .15s"}}
-                                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.28)"}
-                                onMouseLeave={e=>e.currentTarget.style.background="rgba(255,255,255,0.18)"}
+                                style={{background:ac.bg,border:"none",borderLeft:"1.5px solid rgba(255,255,255,0.2)",cursor:"pointer",
+                                  padding:"0 18px",color:"#fff",fontSize:24,fontWeight:300,display:"flex",alignItems:"center",justifyContent:"center",
+                                  borderRadius:"0 16px 0 0",flexShrink:0,minWidth:48,transition:"filter .15s"}}
+                                onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.2)"}
+                                onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}
                                 title={`Agregar producto a ${armario}`}>
                                 +
                               </button>
@@ -1801,13 +1876,13 @@ export default function App() {
            MODAL — AGREGAR PRODUCTO A CAJA
       ══════════════════════════════════════════ */}
       {addToCajaModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}
           onClick={e=>{if(e.target===e.currentTarget){setAddToCajaModal(null);setAddSearch("");setAddSegmento("");}}}>
           <div style={{
-            background:"#fff", width:"100%", maxWidth:560,
-            borderRadius:"20px 20px 0 0",
-            maxHeight:"85vh", display:"flex", flexDirection:"column",
-            boxShadow:"0 -8px 40px rgba(0,0,0,0.18)",
+            background:"#fff", width:"100%", maxWidth:540,
+            borderRadius:20,
+            maxHeight:"88vh", display:"flex", flexDirection:"column",
+            boxShadow:"0 20px 60px rgba(0,0,0,0.25)",
           }}>
             {/* Header */}
             <div style={{padding:"20px 20px 0",flexShrink:0}}>
