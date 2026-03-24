@@ -363,6 +363,21 @@ export default function App() {
   const [userDoc,       setUserDoc]       = useState(null);
   const [authLoading,   setAuthLoading]   = useState(true);
   const [tab,           setTab]           = useState("dashboard");
+  const [tabHistory,    setTabHistory]    = useState([]);  // historial para ← Atrás
+
+  // Wrapper que guarda historial
+  function goTab(newTab) {
+    setTabHistory(h => [...h.slice(-9), tab]);  // máx 10 en historial
+    setTab(newTab);
+  }
+  function goBack() {
+    setTabHistory(h => {
+      if (h.length === 0) return h;
+      const prev = h[h.length - 1];
+      setTab(prev);
+      return h.slice(0, -1);
+    });
+  }
   const [projects,      setProjects]      = useState([]);
   const [currentProject,setCurrentProject]= useState(null);
   const [products,      setProducts]      = useState([]);
@@ -389,6 +404,9 @@ export default function App() {
   const [addToCajaModal,setAddToCajaModal] = useState(null); // {armario, segmento} — modal agregar producto a caja
   const [addSearch,     setAddSearch]      = useState("");   // búsqueda en modal agregar
   const [addSegmento,   setAddSegmento]    = useState("");   // segmento seleccionado
+  const [bodegaEditId,  setBodegaEditId]   = useState(null); // id del producto en edición inline en bodega
+  const [bodegaEditData,setBodegaEditData] = useState({});   // datos en edición
+  const [movCajaModal,  setMovCajaModal]   = useState(null); // {prod} — modal movimiento desde bodega
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -592,6 +610,103 @@ export default function App() {
     } catch(e) { showToast("❌ "+e.message,"warning"); }
   }
 
+  // ── Edición inline en bodega ──
+  function startBodegaEdit(p) {
+    setBodegaEditId(p.id);
+    setBodegaEditData({
+      nombre: p.nombre, stock: p.stock, minimo: p.minimo,
+      precioCompra: p.precioCompra, precioVenta: p.precioVenta,
+      lote: p.lote||"", categoria: p.categoria||"", nota: p.nota||""
+    });
+  }
+  async function saveBodegaEdit(p) {
+    try {
+      const upd = {
+        nombre: bodegaEditData.nombre||p.nombre,
+        stock: parseInt(bodegaEditData.stock)||0,
+        minimo: parseInt(bodegaEditData.minimo)||0,
+        precioCompra: parseFloat(bodegaEditData.precioCompra)||0,
+        precioVenta: parseFloat(bodegaEditData.precioVenta)||0,
+        lote: bodegaEditData.lote||"",
+        categoria: bodegaEditData.categoria||p.categoria,
+        nota: bodegaEditData.nota||"",
+      };
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`,p.id), upd);
+      setProducts(prev=>prev.map(x=>x.id===p.id?{...x,...upd}:x));
+      // Actualizar armarioVista si está abierta
+      if (armarioVista) {
+        setArmarioVista(av=>{
+          if(!av) return av;
+          const newItems = av.items.map(x=>x.id===p.id?{...x,...upd}:x);
+          const bySegmento={};
+          newItems.forEach(x=>{const s=x.segmento||"General";if(!bySegmento[s])bySegmento[s]=[];bySegmento[s].push(x);});
+          return {...av,items:newItems,bySegmento,segs:Object.keys(bySegmento).sort()};
+        });
+      }
+      setBodegaEditId(null); setBodegaEditData({});
+      showToast("✅ Producto actualizado","success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Movimiento rápido desde bodega ──
+  async function saveMovCaja(prod, tipo, qty, motivo) {
+    qty = parseInt(qty)||0;
+    if (!prod || qty<=0) { showToast("⚠️ Cantidad inválida","warning"); return; }
+    if (tipo==="salida" && qty>prod.stock) { showToast("⚠️ Stock insuficiente","warning"); return; }
+    try {
+      const newStock = tipo==="entrada" ? prod.stock+qty : prod.stock-qty;
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`,prod.id),{stock:newStock});
+      const mov = {productoId:prod.id,nombre:prod.nombre,tipo,cantidad:qty,motivo:motivo||"Desde bodega",fecha:new Date().toISOString()};
+      const mRef = await addDoc(collection(db,`projects/${currentProject.id}/movements`),mov);
+      setProducts(prev=>prev.map(x=>x.id===prod.id?{...x,stock:newStock}:x));
+      setMovements(prev=>[{id:mRef.id,...mov},...prev]);
+      // Actualizar armarioVista
+      if (armarioVista) {
+        setArmarioVista(av=>{
+          if(!av) return av;
+          const newItems = av.items.map(x=>x.id===prod.id?{...x,stock:newStock}:x);
+          return {...av,items:newItems};
+        });
+      }
+      setMovCajaModal(null);
+      showToast(`✅ ${tipo==="salida"?"Salida":"Entrada"} registrada — Stock: ${newStock}`,"success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Remover producto de caja (sin eliminar del inventario) ──
+  async function removerDeCaja(prod) {
+    if (!window.confirm(`¿Quitar "${prod.nombre}" de ${prod.armario}? El producto quedará sin ubicación en inventario.`)) return;
+    try {
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`,prod.id),{armario:"",segmento:""});
+      setProducts(prev=>prev.map(x=>x.id===prod.id?{...x,armario:"",segmento:""}:x));
+      if (armarioVista) {
+        setArmarioVista(av=>{
+          if(!av) return av;
+          const newItems = av.items.filter(x=>x.id!==prod.id);
+          if(newItems.length===0){setArmarioVista(null);return null;}
+          const bySegmento={};
+          newItems.forEach(x=>{const s=x.segmento||"General";if(!bySegmento[s])bySegmento[s]=[];bySegmento[s].push(x);});
+          return {...av,items:newItems,bySegmento,segs:Object.keys(bySegmento).sort()};
+        });
+      }
+      showToast(`✅ "${prod.nombre}" removido de la caja`,"success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
+  // ── Eliminar caja/armario completo ──
+  async function eliminarCaja(armario, items) {
+    if (!window.confirm(`¿Eliminar la caja "${armario}"?\n\nLos ${items.length} productos quedarán sin ubicación en inventario. Esta acción no se puede deshacer.`)) return;
+    try {
+      // Quitar armario y segmento de todos los productos de esta caja
+      await Promise.all(items.map(p=>
+        updateDoc(doc(db,`projects/${currentProject.id}/products`,p.id),{armario:"",segmento:""})
+      ));
+      setProducts(prev=>prev.map(p=>items.some(x=>x.id===p.id)?{...p,armario:"",segmento:""}:p));
+      setArmarioVista(null);
+      showToast(`✅ Caja "${armario}" eliminada — ${items.length} productos sin ubicar`,"success");
+    } catch(e) { showToast("❌ "+e.message,"warning"); }
+  }
+
   // ── Asignar/mover producto a caja desde bodega ──
   async function asignarProductoACaja(prod, armario, segmento) {
     try {
@@ -777,13 +892,25 @@ export default function App() {
     <div style={S.page}>
       {/* HEADER */}
       <header style={S.hdr}>
-        {/* ── ☰ izquierda ── */}
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
+        {/* ── ☰ izquierda + ← Atrás ── */}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <button onClick={()=>setSidebarOpen(true)} style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",padding:0,flexShrink:0}} aria-label="Menú">
             <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
             <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
             <span style={{display:"block",width:16,height:2,background:"var(--gray-600)",borderRadius:2}}/>
           </button>
+          {/* ← Atrás — solo visible cuando hay historial */}
+          {tabHistory.length > 0 && (
+            <button onClick={goBack}
+              title={`Volver a ${tabHistory[tabHistory.length-1]}`}
+              style={{background:"none",border:"1.5px solid var(--gray-200)",borderRadius:8,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,color:"var(--gray-600)",transition:"all .15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="var(--gray-100)";e.currentTarget.style.borderColor="var(--gray-300)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.borderColor="var(--gray-200)";}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+          )}
           <div style={S.logo}>
             <div style={S.logoIcon}>🪴</div>
             Invent<span style={{color:"var(--green-500)"}}>App</span>
@@ -1117,7 +1244,7 @@ export default function App() {
                   <select style={{...S.inp,width:"auto",fontSize:12,padding:"7px 10px"}} value={catFilter} onChange={e=>setCatF(e.target.value)}>
                     <option value="">Todas las categorías</option>{getCats(currentProject?.name, products).map(x=><option key={x}>{x}</option>)}
                   </select>
-                  {isConsultor && <button style={S.btn("var(--green-600)")} onClick={()=>setTab("registrar")}>+ Registrar</button>}
+                  {isConsultor && <button style={S.btn("var(--green-600)")} onClick={()=>goTab("registrar")}>+ Registrar</button>}
                 </div>
               </div>
               <div style={S.card}>
@@ -1213,7 +1340,7 @@ export default function App() {
                   <div style={{fontSize:40,marginBottom:12}}>🗄</div>
                   <div style={{fontWeight:700,fontSize:18,color:"var(--gray-800)",marginBottom:8}}>No hay Master Database</div>
                   <div style={{color:"var(--gray-500)",marginBottom:20}}>Primero carga el inventario inicial en la pestaña "Master DB"</div>
-                  <button style={S.btn()} onClick={()=>setTab("master")}>Ir a Master DB →</button>
+                  <button style={S.btn()} onClick={()=>goTab("master")}>Ir a Master DB →</button>
                 </div>
               ) : (
                 <div style={S.card}>
@@ -1429,7 +1556,7 @@ export default function App() {
                         <div style={{fontSize:48,marginBottom:12}}>🗺</div>
                         <div style={{fontWeight:700,fontSize:18,color:"var(--gray-800)",marginBottom:8}}>El mapa está vacío</div>
                         <div style={{color:"var(--gray-500)",marginBottom:20}}>Registra productos y asígnales Armario y Segmento para verlos aquí</div>
-                        <button style={S.btn()} onClick={()=>setTab("registrar")}>📷 Ir a Registrar</button>
+                        <button style={S.btn()} onClick={()=>goTab("registrar")}>📷 Ir a Registrar</button>
                       </div>
                     )}
 
@@ -1549,6 +1676,11 @@ export default function App() {
                         style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",height:36,padding:"0 14px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
                         <span style={{fontSize:18,lineHeight:1}}>+</span> Agregar
                       </button>
+                      <button onClick={()=>eliminarCaja(armarioVista.armario, armarioVista.items)}
+                        title="Eliminar esta caja"
+                        style={{background:"rgba(239,68,68,0.25)",border:"none",color:"#fff",height:36,padding:"0 12px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                        🗑 Caja
+                      </button>
                       <button onClick={()=>setArmarioVista(null)} style={{
                         background:"rgba(255,255,255,0.18)", border:"none",
                         color:"#fff", width:36, height:36, borderRadius:10,
@@ -1622,74 +1754,105 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Lista de productos */}
+                          {/* Lista de productos con acciones */}
                           <div style={{padding:"8px 10px", display:"flex", flexDirection:"column", gap:6}}>
                             {prods.map((p, pi) => {
                               const stBg  = p.stock===0?"#fef2f2":p.stock<=p.minimo?"#fffbeb":"#f0fdf4";
                               const stCol = p.stock===0?"#991b1b":p.stock<=p.minimo?"#92400e":"#166534";
                               const stBd  = p.stock===0?"#fecaca":p.stock<=p.minimo?"#fde68a":"#bbf7d0";
+                              const isEditing = bodegaEditId === p.id;
                               return (
                                 <div key={p.id} style={{
-                                  display:"flex", alignItems:"center", gap:12,
-                                  padding:"12px 14px", borderRadius:10,
-                                  background:"#fafafa", border:`1px solid #f3f4f6`,
-                                  transition:"background .15s",
+                                  borderRadius:12, overflow:"hidden",
+                                  border: isEditing ? "2px solid var(--green-400)" : "1px solid #f0f0f0",
+                                  background: isEditing ? "#f0fdf4" : "#fafafa",
+                                  transition:"all .15s",
                                 }}>
-                                  {/* Número de orden */}
-                                  <span style={{
-                                    width:24, height:24, borderRadius:6,
-                                    background:sc.bg, color:"#fff",
-                                    display:"inline-flex", alignItems:"center",
-                                    justifyContent:"center", fontSize:11,
-                                    fontWeight:800, flexShrink:0,
-                                  }}>{pi+1}</span>
-
-                                  {/* Info */}
-                                  <div style={{flex:1, minWidth:0}}>
-                                    <div style={{fontWeight:600, fontSize:14, color:"#111827", lineHeight:1.2}}>
-                                      {p.nombre}
-                                    </div>
-                                    <div style={{display:"flex", gap:8, marginTop:4, flexWrap:"wrap"}}>
-                                      {p.categoria && (
-                                        <span style={{fontSize:10, color:"#6b7280", background:"#f3f4f6", borderRadius:20, padding:"1px 7px", fontWeight:600}}>
-                                          {p.categoria}
-                                        </span>
-                                      )}
-                                      {p.lote && (
-                                        <span style={{fontSize:10, color:"#6b7280", background:"#f3f4f6", borderRadius:20, padding:"1px 7px"}}>
-                                          Lote: {p.lote}
-                                        </span>
-                                      )}
-                                      {p.fechaVencimiento && (
-                                        <span style={{fontSize:10, color:"#92400e", background:"#fef3c7", borderRadius:20, padding:"1px 7px", fontWeight:600}}>
-                                          Vence: {new Date(p.fechaVencimiento).toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"})}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Stock badge */}
-                                  <div style={{
-                                    display:"flex", flexDirection:"column",
-                                    alignItems:"flex-end", gap:4, flexShrink:0,
-                                  }}>
+                                  {/* Fila principal */}
+                                  <div style={{display:"flex", alignItems:"center", gap:10, padding:"10px 12px"}}>
+                                    {/* Número */}
                                     <span style={{
-                                      padding:"5px 12px", borderRadius:20,
-                                      fontSize:13, fontWeight:800,
-                                      background:stBg, color:stCol,
-                                      border:`1px solid ${stBd}`,
-                                    }}>×{p.stock}</span>
-                                    {p.stock===0 && (
-                                      <span style={{fontSize:9, fontWeight:800, color:"#fff", background:"#ef4444", borderRadius:4, padding:"2px 6px", letterSpacing:.3}}>
-                                        PEDIR YA
-                                      </span>
+                                      width:22, height:22, borderRadius:6,
+                                      background:sc.bg, color:"#fff",
+                                      display:"inline-flex", alignItems:"center",
+                                      justifyContent:"center", fontSize:10,
+                                      fontWeight:800, flexShrink:0,
+                                    }}>{pi+1}</span>
+
+                                    {/* Nombre + meta */}
+                                    <div style={{flex:1, minWidth:0}}>
+                                      {isEditing ? (
+                                        <input value={bodegaEditData.nombre||""} onChange={e=>setBodegaEditData(d=>({...d,nombre:e.target.value}))}
+                                          style={{...S.inp,fontSize:13,padding:"5px 8px",marginBottom:0}} placeholder="Nombre"/>
+                                      ) : (
+                                        <div style={{fontWeight:600,fontSize:13,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
+                                      )}
+                                      {!isEditing && (
+                                        <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
+                                          {p.categoria && <span style={{fontSize:10,color:"#6b7280",background:"#f3f4f6",borderRadius:20,padding:"1px 7px",fontWeight:600}}>{p.categoria}</span>}
+                                          {p.lote && <span style={{fontSize:10,color:"#6b7280",background:"#f3f4f6",borderRadius:20,padding:"1px 7px"}}>Lote: {p.lote}</span>}
+                                          {p.fechaVencimiento && <span style={{fontSize:10,color:"#92400e",background:"#fef3c7",borderRadius:20,padding:"1px 7px",fontWeight:600}}>Vence: {new Date(p.fechaVencimiento).toLocaleDateString("es-CO",{day:"2-digit",month:"short"})}</span>}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Stock — editable */}
+                                    {isEditing ? (
+                                      <input type="number" value={bodegaEditData.stock||""} onChange={e=>setBodegaEditData(d=>({...d,stock:e.target.value}))}
+                                        style={{...S.inp,width:64,fontSize:13,padding:"5px 8px",textAlign:"center"}} placeholder="Stock"/>
+                                    ) : (
+                                      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                                        <span style={{padding:"4px 11px",borderRadius:20,fontSize:13,fontWeight:800,background:stBg,color:stCol,border:`1px solid ${stBd}`}}>
+                                          {p.stock} {p.unidad||"unid"}
+                                        </span>
+                                        {p.stock===0 && <span style={{fontSize:9,fontWeight:800,color:"#fff",background:"#ef4444",borderRadius:4,padding:"2px 6px"}}>PEDIR YA</span>}
+                                        {p.stock>0&&p.stock<=p.minimo && <span style={{fontSize:9,fontWeight:800,color:"#92400e",background:"#fef3c7",borderRadius:4,padding:"2px 6px"}}>BAJO</span>}
+                                      </div>
                                     )}
-                                    {p.stock>0 && p.stock<=p.minimo && (
-                                      <span style={{fontSize:9, fontWeight:800, color:"#92400e", background:"#fef3c7", borderRadius:4, padding:"2px 6px"}}>
-                                        BAJO
-                                      </span>
+
+                                    {/* Botones de acción */}
+                                    {isEditing ? (
+                                      <div style={{display:"flex",gap:5,flexShrink:0}}>
+                                        <button onClick={()=>saveBodegaEdit(p)} style={{background:"var(--green-600)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:700}}>✓</button>
+                                        <button onClick={()=>{setBodegaEditId(null);setBodegaEditData({});}} style={{background:"var(--gray-100)",border:"none",color:"var(--gray-600)",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:12}}>✕</button>
+                                      </div>
+                                    ) : (
+                                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                                        {/* Movimiento */}
+                                        <button onClick={()=>setMovCajaModal({prod:p})}
+                                          title="Registrar movimiento"
+                                          style={{background:"#eff6ff",border:"none",color:"#1d4ed8",borderRadius:8,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+                                          ↕
+                                        </button>
+                                        {/* Editar */}
+                                        <button onClick={()=>startBodegaEdit(p)}
+                                          title="Editar producto"
+                                          style={{background:"#f0fdf4",border:"none",color:"var(--green-700)",borderRadius:8,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>
+                                          ✏️
+                                        </button>
+                                        {/* Remover de caja */}
+                                        <button onClick={()=>removerDeCaja(p)}
+                                          title="Remover de esta caja"
+                                          style={{background:"#fff7ed",border:"none",color:"#c2410c",borderRadius:8,width:30,height:30,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>
+                                          ⊖
+                                        </button>
+                                      </div>
                                     )}
                                   </div>
+
+                                  {/* Fila extra de edición */}
+                                  {isEditing && (
+                                    <div style={{padding:"0 12px 10px",display:"flex",gap:8,flexWrap:"wrap"}}>
+                                      <input type="number" value={bodegaEditData.minimo||""} onChange={e=>setBodegaEditData(d=>({...d,minimo:e.target.value}))}
+                                        style={{...S.inp,flex:1,minWidth:80,fontSize:12,padding:"5px 8px"}} placeholder="Mínimo"/>
+                                      <input type="number" value={bodegaEditData.precioCompra||""} onChange={e=>setBodegaEditData(d=>({...d,precioCompra:e.target.value}))}
+                                        style={{...S.inp,flex:1,minWidth:80,fontSize:12,padding:"5px 8px"}} placeholder="P.Compra"/>
+                                      <input type="number" value={bodegaEditData.precioVenta||""} onChange={e=>setBodegaEditData(d=>({...d,precioVenta:e.target.value}))}
+                                        style={{...S.inp,flex:1,minWidth:80,fontSize:12,padding:"5px 8px"}} placeholder="P.Venta"/>
+                                      <input value={bodegaEditData.lote||""} onChange={e=>setBodegaEditData(d=>({...d,lote:e.target.value}))}
+                                        style={{...S.inp,flex:1,minWidth:80,fontSize:12,padding:"5px 8px"}} placeholder="Lote"/>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -1837,7 +2000,7 @@ export default function App() {
               <div style={{flex:1,padding:"12px 0",overflowY:"auto"}}>
                 <div style={{fontSize:9,fontWeight:800,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5,padding:"0 16px 8px"}}>Navegación</div>
                 {allTabs.map(([id,lbl])=>(
-                  <button key={id} onClick={()=>{setTab(id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:tab===id?"var(--green-50)":"none",border:"none",borderLeft:`3px solid ${tab===id?"var(--green-600)":"transparent"}`,cursor:"pointer",fontSize:13,fontWeight:tab===id?700:500,color:tab===id?"var(--green-800)":"var(--gray-700)",textAlign:"left"}}>
+                  <button key={id} onClick={()=>{goTab(id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 16px",background:tab===id?"var(--green-50)":"none",border:"none",borderLeft:`3px solid ${tab===id?"var(--green-600)":"transparent"}`,cursor:"pointer",fontSize:13,fontWeight:tab===id?700:500,color:tab===id?"var(--green-800)":"var(--gray-700)",textAlign:"left"}}>
                     {lbl}
                   </button>
                 ))}
@@ -1871,6 +2034,76 @@ export default function App() {
           </div>
         </>
       )}
+
+      {/* ══════════════════════════════════════════
+           MODAL — MOVIMIENTO DESDE BODEGA
+      ══════════════════════════════════════════ */}
+      {movCajaModal && (()=>{
+        const prod = movCajaModal.prod;
+        let movTipo = movCajaModal.tipo||"salida";
+        let movQty = movCajaModal.qty||"";
+        let movMotivo = movCajaModal.motivo||"";
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:410,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}
+            onClick={e=>{if(e.target===e.currentTarget) setMovCajaModal(null);}}>
+            <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.25)",overflow:"hidden"}}>
+              {/* Header */}
+              <div style={{background:"var(--green-700)",padding:"18px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontWeight:800,fontSize:16,color:"#fff"}}>↕ Registrar Movimiento</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,.75)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:280}}>{prod.nombre}</div>
+                </div>
+                <button onClick={()=>setMovCajaModal(null)} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+              </div>
+
+              {/* Body */}
+              <div style={{padding:"20px"}}>
+                {/* Stock actual */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,padding:"10px 14px",background:"#f8fafc",borderRadius:10,border:"1px solid var(--gray-100)"}}>
+                  <span style={{fontSize:13,color:"var(--gray-500)",fontWeight:600}}>Stock actual</span>
+                  <span style={{fontSize:20,fontWeight:800,color:prod.stock===0?"#ef4444":prod.stock<=prod.minimo?"#f59e0b":"var(--green-700)"}}>{prod.stock} {prod.unidad||"unid"}</span>
+                </div>
+
+                {/* Tipo */}
+                <div style={{display:"flex",gap:8,marginBottom:14}}>
+                  {["salida","entrada"].map(t=>(
+                    <button key={t} onClick={()=>setMovCajaModal(m=>({...m,tipo:t}))}
+                      style={{flex:1,padding:"10px",border:"2px solid",borderColor:movTipo===t?(t==="salida"?"#ef4444":"var(--green-500)"):"var(--gray-200)",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,
+                        background:movTipo===t?(t==="salida"?"#fef2f2":"#f0fdf4"):"#fff",
+                        color:movTipo===t?(t==="salida"?"#dc2626":"var(--green-700)"):"var(--gray-500)",
+                      }}>
+                      {t==="salida"?"⬇ Salida":"⬆ Entrada"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Cantidad */}
+                <div style={{marginBottom:14}}>
+                  <label style={S.lbl}>Cantidad</label>
+                  <input type="number" min="1" value={movQty}
+                    onChange={e=>setMovCajaModal(m=>({...m,qty:e.target.value}))}
+                    style={{...S.inp,marginTop:6,fontSize:20,textAlign:"center",fontWeight:700}}
+                    placeholder="0"/>
+                </div>
+
+                {/* Motivo */}
+                <div style={{marginBottom:18}}>
+                  <label style={S.lbl}>Motivo (opcional)</label>
+                  <input value={movMotivo}
+                    onChange={e=>setMovCajaModal(m=>({...m,motivo:e.target.value}))}
+                    style={{...S.inp,marginTop:6}}
+                    placeholder="Ej: Consumo del día, Reposición..."/>
+                </div>
+
+                <button onClick={()=>saveMovCaja(prod,movTipo,movQty,movMotivo)}
+                  style={{...S.btn(movTipo==="salida"?"#dc2626":"var(--green-700)"),width:"100%",justifyContent:"center",padding:"12px",fontSize:15,fontWeight:700}}>
+                  {movTipo==="salida"?"⬇ Registrar Salida":"⬆ Registrar Entrada"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ══════════════════════════════════════════
            MODAL — AGREGAR PRODUCTO A CAJA
