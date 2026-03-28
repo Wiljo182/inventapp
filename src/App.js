@@ -430,9 +430,7 @@ export default function App() {
   const [contEditId,     setContEditId]     = useState(null);
   const [contEditData,   setContEditData]   = useState({});
   const [filterBodega,   setFilterBodega]   = useState("");
-  const [contSearch,     setContSearch]     = useState("");    // búsqueda en contabilidad
-  const [contView,       setContView]       = useState("general"); // vista contabilidad
-  const [margenGlobal,   setMargenGlobal]   = useState(30);   // % margen global contabilidad
+  const [margenGlobal,   setMargenGlobal]   = useState(30);
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
