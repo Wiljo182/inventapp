@@ -194,7 +194,7 @@ function LoginPage({ onLogin }) {
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:32 }}>
           <div style={{ width:64, height:64, background:"linear-gradient(135deg,#22c55e,#15803d)", borderRadius:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🏪</div>
-          <div style={{ fontWeight:800, fontSize:26, color:"var(--green-800)" }}>Bode<span style={{color:"var(--green-500)"}}>gix</span></div>
+          <div style={{ fontWeight:800, fontSize:26, color:"var(--green-800)" }}><span style={{display:"inline",whiteSpace:"nowrap"}}>Bode<span style={{color:"var(--green-500)"}}>gix</span></span></div>
           <div style={{ fontSize:13, color:"var(--gray-500)", marginTop:4 }}>Consultoría Retail — Cartagena 🇨🇴</div>
         </div>
         {/* Card */}
@@ -421,6 +421,10 @@ export default function App() {
   const [projDropdown,  setProjDropdown]  = useState(false); // dropdown selector de proyectos
   const [userDropdown,  setUserDropdown]  = useState(false); // dropdown usuario/cerrar sesión
   const [bodegaHighlight,setBodegaHighlight]=useState(null); // id producto resaltado en bodega
+  const [sinUbicarOpen,  setSinUbicarOpen]  = useState(false); // colapsable sin ubicar en bodega
+  const [contSearch,     setContSearch]     = useState("");    // búsqueda en contabilidad
+  const [contView,       setContView]       = useState("general"); // vista contabilidad
+  const [margenGlobal,   setMargenGlobal]   = useState(30);   // % margen global contabilidad
   const [teamMembers,   setTeamMembers]   = useState([]);
   const [teamLoading,   setTeamLoading]   = useState(false);
   const [inviteLoading, setInviteLoading] = useState(false);
@@ -939,9 +943,9 @@ export default function App() {
               </svg>
             </button>
           )}
-          <div style={S.logo}>
+          <div style={{...S.logo,whiteSpace:"nowrap"}}>
             <div style={S.logoIcon}>🪴</div>
-            Bode<span style={{color:"var(--green-500)"}}>gix</span>
+            <span style={{whiteSpace:"nowrap"}}>Bode<span style={{color:"var(--green-500)"}}>gix</span></span>
           </div>
         </div>
         {/* ── Header derecho: proyecto + usuario ── */}
@@ -984,7 +988,7 @@ export default function App() {
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{flexShrink:0,transform:projDropdown?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}><polyline points="6 9 12 15 18 9"/></svg>
               </button>
               {projDropdown && (
-                <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",border:"1px solid var(--gray-100)",minWidth:200,zIndex:300,overflow:"hidden"}}>
+                <div style={{position:"fixed",top:56,right:8,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",border:"1px solid var(--gray-100)",minWidth:220,zIndex:600,overflow:"hidden"}}>
                   <div style={{padding:"10px 14px 6px",fontSize:10,fontWeight:700,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.5}}>Proyectos</div>
                   {projects.map(pr=>(
                     <button key={pr.id} onClick={()=>{setCurrentProject(pr);setProjDropdown(false);}}
@@ -1023,7 +1027,7 @@ export default function App() {
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" strokeWidth="2.5" style={{flexShrink:0,transform:userDropdown?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s"}}><polyline points="6 9 12 15 18 9"/></svg>
             </button>
             {userDropdown && (
-              <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",border:"1px solid var(--gray-100)",minWidth:180,zIndex:300,overflow:"hidden"}}>
+              <div style={{position:"fixed",top:56,right:8,background:"#fff",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",border:"1px solid var(--gray-100)",minWidth:200,zIndex:600,overflow:"hidden"}}>
                 <div style={{padding:"12px 14px 8px",borderBottom:"1px solid var(--gray-100)"}}>
                   <div style={{fontWeight:700,fontSize:13,color:"var(--gray-900)"}}>{userDoc?.name||user.email?.split("@")[0]}</div>
                   <div style={{fontSize:11,color:"var(--gray-400)",marginTop:2}}>{user.email}</div>
@@ -1043,7 +1047,7 @@ export default function App() {
 
         {/* Overlay para cerrar dropdowns al tocar fuera */}
         {(projDropdown||userDropdown) && (
-          <div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>{setProjDropdown(false);setUserDropdown(false);}}/>
+          <div style={{position:"fixed",inset:0,zIndex:599}} onClick={()=>{setProjDropdown(false);setUserDropdown(false);}}/>
         )}
       </header>
 
@@ -1650,9 +1654,7 @@ export default function App() {
                 return (
                   <div>
                     {/* ── Sin ubicar ── */}
-                    {sinUbicar.length > 0 && (()=>{
-                      const [sinUbicarOpen,setSinUbicarOpen]=React.useState(false);
-                      return(
+                    {sinUbicar.length > 0 && (
                       <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,marginBottom:16,overflow:"hidden"}}>
                         <button onClick={()=>setSinUbicarOpen(o=>!o)}
                           style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
@@ -1679,7 +1681,7 @@ export default function App() {
                           ))}
                         </div>}
                       </div>
-                      );})()}
+                    )}
 
                     {ubicados.length===0 && sinUbicar.length===0 && (
                       <div style={{...S.card,textAlign:"center",padding:"48px 20px"}}>
@@ -2018,7 +2020,7 @@ export default function App() {
           {tab==="contabilidad" && (
             <div className="fadeUp">
               {(()=>{
-                // ── Cálculos base ──
+                // ── Cálculos base (variables locales, sin hooks) ──
                 const prods = products.filter(p=>p.precioCompra>0||p.precioVenta>0);
                 const totalCosto    = products.reduce((s,p)=>s+(parseFloat(p.precioCompra)||0)*(parseInt(p.stock)||0),0);
                 const totalVenta    = products.reduce((s,p)=>s+(parseFloat(p.precioVenta)||0)*(parseInt(p.stock)||0),0);
@@ -2028,10 +2030,6 @@ export default function App() {
                 const sinStockPct   = products.length>0 ? ((sinStock/products.length)*100).toFixed(1) : 0;
                 const stockBajo     = products.filter(p=>p.stock>0&&p.stock<=p.minimo).length;
                 const sinPrecio     = products.filter(p=>!p.precioCompra||p.precioCompra===0).length;
-                const [contSearch, setContSearch]   = React.useState("");
-                const [contView,   setContView]     = React.useState("general"); // general | costos
-                const [margenGlobal, setMargenGlobal] = React.useState(30); // % margen global
-
                 const prodsFiltrados = products.filter(p=>
                   !contSearch.trim() ||
                   p.nombre?.toLowerCase().includes(contSearch.toLowerCase()) ||
@@ -2340,7 +2338,7 @@ export default function App() {
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:32,height:32,background:"rgba(255,255,255,0.2)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🪴</div>
                 <div>
-                  <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>Bode<span style={{color:"#86efac"}}>App</span></div>
+                  <div style={{fontWeight:800,fontSize:15,color:"#fff"}}><span style={{whiteSpace:"nowrap"}}>Bode<span style={{color:"#86efac"}}>gix</span></span></div>
                   <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>{userDoc?.name||user.email?.split("@")[0]} · <span style={{fontWeight:700}}>{userDoc?.role||"consultor"}</span></div>
                 </div>
               </div>
