@@ -77,14 +77,25 @@ const ST     = { ok:{label:"Normal",bg:"#dcfce7",tx:"#166534"}, low:{label:"Stoc
 
 // Vencimiento
 function expiryStatus(fechaVencimiento) {
-  if (!fechaVencimiento) return null;
-  const now  = new Date();
-  const exp  = new Date(fechaVencimiento);
-  const days = Math.ceil((exp - now) / 86400000);
-  if (days < 0)  return { label:"Vencido",     bg:"#fee2e2", tx:"#991b1b", icon:"💀", level:"expired" };
-  if (days <= 3) return { label:`Vence en ${days}d`, bg:"#fee2e2", tx:"#991b1b", icon:"🔴", level:"critical" };
-  if (days <= 7) return { label:`Vence en ${days}d`, bg:"#fef3c7", tx:"#92400e", icon:"🟡", level:"warning" };
-  return { label:`Vence en ${days}d`,   bg:"#dcfce7", tx:"#166534", icon:"🟢", level:"ok" };
+  if (!fechaVencimiento || fechaVencimiento === "null" || fechaVencimiento === "") return null;
+  let exp;
+  if (fechaVencimiento.includes("T")) {
+    exp = new Date(fechaVencimiento);
+  } else {
+    const [y, m, d] = fechaVencimiento.split("-").map(Number);
+    exp = new Date(y, m - 1, d);
+  }
+  if (isNaN(exp.getTime())) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const expDay = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate());
+  const days = Math.round((expDay - now) / 86400000);
+  const fechaStr = exp.toLocaleDateString("es-CO", {day:"2-digit", month:"short", year:"numeric"});
+  if (days < 0)   return { label:`Vencido — ${fechaStr}`,      bg:"#fee2e2", tx:"#991b1b", icon:"💀", level:"expired",  days, fechaStr };
+  if (days === 0) return { label:`Vence HOY — ${fechaStr}`,    bg:"#fee2e2", tx:"#991b1b", icon:"🔴", level:"critical", days, fechaStr };
+  if (days <= 7)  return { label:`${days}d — ${fechaStr}`,     bg:"#fee2e2", tx:"#991b1b", icon:"🔴", level:"critical", days, fechaStr };
+  if (days <= 30) return { label:`${days}d — ${fechaStr}`,     bg:"#fef3c7", tx:"#92400e", icon:"⚠️", level:"warning",  days, fechaStr };
+  return           { label:`${days}d — ${fechaStr}`,           bg:"#dcfce7", tx:"#166534", icon:"🟢", level:"ok",       days, fechaStr };
 }
 
 function resizeImage(file, maxPx=1024) {
@@ -183,7 +194,7 @@ function LoginPage({ onLogin }) {
         {/* Logo */}
         <div style={{ textAlign:"center", marginBottom:32 }}>
           <div style={{ width:64, height:64, background:"linear-gradient(135deg,#22c55e,#15803d)", borderRadius:20, display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 14px" }}>🏪</div>
-          <div style={{ fontWeight:800, fontSize:26, color:"var(--green-800)" }}>Invent<span style={{color:"var(--green-500)"}}>App</span></div>
+          <div style={{ fontWeight:800, fontSize:26, color:"var(--green-800)" }}>Bode<span style={{color:"var(--green-500)"}}>gix</span></div>
           <div style={{ fontSize:13, color:"var(--gray-500)", marginTop:4 }}>Consultoría Retail — Cartagena 🇨🇴</div>
         </div>
         {/* Card */}
@@ -658,7 +669,9 @@ export default function App() {
     if (tipo==="salida" && qty>prod.stock) { showToast("⚠️ Stock insuficiente","warning"); return; }
     try {
       const newStock = tipo==="entrada" ? prod.stock+qty : prod.stock-qty;
-      await updateDoc(doc(db,`projects/${currentProject.id}/products`,prod.id),{stock:newStock});
+      const cajUpd = {stock:newStock};
+      if (tipo==="salida" && newStock===0) { cajUpd.armario=""; cajUpd.segmento=""; }
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`,prod.id), cajUpd);
       const mov = {productoId:prod.id,nombre:prod.nombre,tipo,cantidad:qty,motivo:motivo||"Desde bodega",fecha:new Date().toISOString()};
       const mRef = await addDoc(collection(db,`projects/${currentProject.id}/movements`),mov);
       setProducts(prev=>prev.map(x=>x.id===prod.id?{...x,stock:newStock}:x));
@@ -835,13 +848,25 @@ export default function App() {
     if (movForm.tipo==="salida"&&qty>p.stock) { showToast("⚠️ Stock insuficiente","warning"); return; }
     try {
       const newStock = movForm.tipo==="entrada"?p.stock+qty:p.stock-qty;
-      await updateDoc(doc(db,`projects/${currentProject.id}/products`,p.id),{stock:newStock});
-      const mov = {productoId:p.id,nombre:p.nombre,tipo:movForm.tipo,cantidad:qty,motivo:movForm.motivo||"Sin motivo",fecha:new Date().toISOString()};
+      // Si es salida y el armario/segmento fue especificado en movForm, actualizar ubicación también
+      const updFields = {stock:newStock};
+      if (movForm.tipo==="salida" && newStock===0) {
+        // Producto agotado: quitar de la caja
+        updFields.armario = "";
+        updFields.segmento = "";
+      } else if (movForm.tipo==="entrada" && movForm.armario) {
+        updFields.armario = movForm.armario;
+        updFields.segmento = movForm.segmento || p.segmento || "";
+      }
+      await updateDoc(doc(db,`projects/${currentProject.id}/products`,p.id), updFields);
+      const mov = {productoId:p.id,nombre:p.nombre,tipo:movForm.tipo,cantidad:qty,
+        motivo:movForm.motivo||"Sin motivo",fecha:new Date().toISOString(),
+        armario:movForm.armario||p.armario||"",segmento:movForm.segmento||p.segmento||""};
       const mRef = await addDoc(collection(db,`projects/${currentProject.id}/movements`),mov);
-      setProducts(prev=>prev.map(x=>x.id===p.id?{...x,stock:newStock}:x));
+      setProducts(prev=>prev.map(x=>x.id===p.id?{...x,stock:newStock,...updFields}:x));
       setMovements(prev=>[{id:mRef.id,...mov},...prev]);
-      setMovModal(false); setMovForm({pid:"",tipo:"entrada",qty:"",motivo:""});
-      showToast(`✅ Movimiento registrado`,"success");
+      setMovModal(false); setMovForm({pid:"",tipo:"entrada",qty:"",motivo:"",armario:"",segmento:""});
+      showToast(`✅ Movimiento registrado — Stock: ${newStock}`,"success");
     } catch(e) { showToast("❌ "+e.message,"warning"); }
   }
 
@@ -878,7 +903,7 @@ export default function App() {
   if (authLoading) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"var(--green-50)",flexDirection:"column",gap:16}}>
       <div style={{width:48,height:48,border:"4px solid var(--green-200)",borderTop:"4px solid var(--green-600)",borderRadius:"50%",animation:"spin .8s linear infinite"}}/>
-      <div style={{color:"var(--green-800)",fontWeight:600}}>Cargando InventApp...</div>
+      <div style={{color:"var(--green-800)",fontWeight:600}}>Cargando Bodegix...</div>
     </div>
   );
 
@@ -888,8 +913,8 @@ export default function App() {
 
   // ── Tabs según rol ──
   const allTabs = isConsultor
-    ? [["dashboard","📊 Dashboard"],["registrar","📷 Registrar"],["inventario","📦 Inventario"],["movimientos","↕ Movimientos"],["diferencial","📋 Diferencial"],["master","🗄 Master DB"],["bodega","🗺 Bodega"],["analisis","📈 Análisis"]]
-    : [["dashboard","📊 Dashboard"],["inventario","📦 Inventario"],["analisis","📈 Análisis"]];
+    ? [["dashboard","📊 Dashboard"],["registrar","📷 Registrar"],["inventario","📦 Base de datos"],["movimientos","↕ Movimientos"],["diferencial","📋 Diferencial"],["master","🗄 Master DB"],["bodega","🗺 Bodega"],["analisis","📈 Análisis"],["contabilidad","💰 Contabilidad"]]
+    : [["dashboard","📊 Dashboard"],["inventario","📦 Base de datos"],["analisis","📈 Análisis"]];
 
   return (
     <div style={S.page}>
@@ -916,7 +941,7 @@ export default function App() {
           )}
           <div style={S.logo}>
             <div style={S.logoIcon}>🪴</div>
-            Invent<span style={{color:"var(--green-500)"}}>App</span>
+            Bode<span style={{color:"var(--green-500)"}}>gix</span>
           </div>
         </div>
         {/* ── Header derecho: proyecto + usuario ── */}
@@ -926,7 +951,7 @@ export default function App() {
           {!isMobile && (
             <div style={{display:"flex",gap:4,marginRight:4}}>
               {[
-                {lbl:"📦",title:"Inventario",id:"inventario"},
+                {lbl:"📦",title:"Base de datos",id:"inventario"},
                 {lbl:"📷",title:"Registrar",id:"registrar"},
                 {lbl:"↕",title:"Movimientos",id:"movimientos"},
               ].map(({lbl,title,id})=>(
@@ -1330,7 +1355,7 @@ export default function App() {
           {tab==="inventario" && (
             <div className="fadeUp">
               <div style={S.secH}>
-                <div><div style={S.secT}>Inventario</div><div style={S.secS}>{products.length} productos · {currentProject.name}</div></div>
+                <div><div style={S.secT}>Base de Datos</div><div style={S.secS}>{products.length} productos · {currentProject.name}</div></div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <select style={{...S.inp,width:"auto",fontSize:12,padding:"7px 10px"}} value={catFilter} onChange={e=>setCatF(e.target.value)}>
                     <option value="">Todas las categorías</option>{getCats(currentProject?.name, products).map(x=><option key={x}>{x}</option>)}
@@ -1625,12 +1650,19 @@ export default function App() {
                 return (
                   <div>
                     {/* ── Sin ubicar ── */}
-                    {sinUbicar.length > 0 && (
-                      <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
-                        <div style={{fontWeight:700,fontSize:13,color:"#92400e",marginBottom:10}}>
-                          ⚠️ {sinUbicar.length} producto{sinUbicar.length>1?"s":""} sin ubicación — toca para asignar
-                        </div>
-                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {sinUbicar.length > 0 && (()=>{
+                      const [sinUbicarOpen,setSinUbicarOpen]=React.useState(false);
+                      return(
+                      <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:14,marginBottom:16,overflow:"hidden"}}>
+                        <button onClick={()=>setSinUbicarOpen(o=>!o)}
+                          style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                          <div style={{fontWeight:700,fontSize:13,color:"#92400e",display:"flex",alignItems:"center",gap:8}}>
+                            ⚠️ {sinUbicar.length} producto{sinUbicar.length>1?"s":""} sin ubicación
+                            <span style={{fontSize:10,fontWeight:600,color:"#b45309",background:"#fde68a",borderRadius:20,padding:"2px 8px"}}>Toca para {sinUbicarOpen?"ocultar":"asignar"}</span>
+                          </div>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2.5" style={{transform:sinUbicarOpen?"rotate(180deg)":"rotate(0deg)",transition:"transform .2s",flexShrink:0}}><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        {sinUbicarOpen && <div style={{padding:"0 16px 14px",display:"flex",flexDirection:"column",gap:6}}>
                           {sinUbicar.map(p=>(
                             <button key={p.id} onClick={()=>{
                               setEditQuickId(p.id); setTab("inventario"); startEdit(p);
@@ -1645,9 +1677,9 @@ export default function App() {
                               <span style={{fontSize:11,fontWeight:700,color:"#fff",background:"#f59e0b",borderRadius:20,padding:"3px 10px",flexShrink:0,whiteSpace:"nowrap"}}>📍 Asignar →</span>
                             </button>
                           ))}
-                        </div>
+                        </div>}
                       </div>
-                    )}
+                      );})()}
 
                     {ubicados.length===0 && sinUbicar.length===0 && (
                       <div style={{...S.card,textAlign:"center",padding:"48px 20px"}}>
@@ -1785,6 +1817,11 @@ export default function App() {
                       <button onClick={()=>{setAddToCajaModal({armario:armarioVista.armario,segmento:""});setAddSearch("");setAddSegmento("");}}
                         style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",height:36,padding:"0 14px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
                         <span style={{fontSize:18,lineHeight:1}}>+</span> Agregar
+                      </button>
+                      <button onClick={()=>{setArmarioVista(null);goTab("movimientos");}}
+                        title="Ir a Movimientos"
+                        style={{background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",height:36,padding:"0 12px",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                        ↕ Movimientos
                       </button>
                       <button onClick={()=>eliminarCaja(armarioVista.armario, armarioVista.items)}
                         title="Eliminar esta caja"
@@ -1977,6 +2014,226 @@ export default function App() {
             </div>
           )}
 
+          {/* ════ CONTABILIDAD ════ */}
+          {tab==="contabilidad" && (
+            <div className="fadeUp">
+              {(()=>{
+                // ── Cálculos base ──
+                const prods = products.filter(p=>p.precioCompra>0||p.precioVenta>0);
+                const totalCosto    = products.reduce((s,p)=>s+(parseFloat(p.precioCompra)||0)*(parseInt(p.stock)||0),0);
+                const totalVenta    = products.reduce((s,p)=>s+(parseFloat(p.precioVenta)||0)*(parseInt(p.stock)||0),0);
+                const ganancia      = totalVenta - totalCosto;
+                const margenPct     = totalCosto>0 ? ((ganancia/totalCosto)*100).toFixed(1) : 0;
+                const sinStock      = products.filter(p=>p.stock===0).length;
+                const sinStockPct   = products.length>0 ? ((sinStock/products.length)*100).toFixed(1) : 0;
+                const stockBajo     = products.filter(p=>p.stock>0&&p.stock<=p.minimo).length;
+                const sinPrecio     = products.filter(p=>!p.precioCompra||p.precioCompra===0).length;
+                const [contSearch, setContSearch]   = React.useState("");
+                const [contView,   setContView]     = React.useState("general"); // general | costos
+                const [margenGlobal, setMargenGlobal] = React.useState(30); // % margen global
+
+                const prodsFiltrados = products.filter(p=>
+                  !contSearch.trim() ||
+                  p.nombre?.toLowerCase().includes(contSearch.toLowerCase()) ||
+                  p.codigo?.toLowerCase().includes(contSearch.toLowerCase())
+                );
+
+                return (
+                  <div>
+                    {/* ── Header ── */}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+                      <div>
+                        <div style={S.secT}>💰 Contabilidad</div>
+                        <div style={S.secS}>{currentProject.name} · {products.length} productos</div>
+                      </div>
+                      {/* Sub-tabs */}
+                      <div style={{display:"flex",gap:6,background:"var(--gray-100)",borderRadius:10,padding:4}}>
+                        {[["general","📊 General"],["costos","💲 Costos & Precios"]].map(([v,lbl])=>(
+                          <button key={v} onClick={()=>setContView(v)}
+                            style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+                              background:contView===v?"#fff":"transparent",
+                              color:contView===v?"var(--gray-900)":"var(--gray-500)",
+                              boxShadow:contView===v?"0 1px 4px rgba(0,0,0,0.1)":"none",transition:"all .15s"}}>
+                            {lbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ══ VISTA GENERAL ══ */}
+                    {contView==="general" && (
+                      <div>
+                        {/* KPIs */}
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:12,marginBottom:20}}>
+                          {[
+                            {lbl:"Valor en Stock",     val:fmt(totalCosto),      accent:"#16a34a", icon:"📦", sub:"a precio compra"},
+                            {lbl:"Valor Potencial",    val:fmt(totalVenta),      accent:"#2563eb", icon:"💵", sub:"a precio venta"},
+                            {lbl:"Ganancia Potencial", val:fmt(ganancia),        accent:ganancia>=0?"#16a34a":"#dc2626", icon:"📈", sub:`Margen: ${margenPct}%`},
+                            {lbl:"Sin Stock",          val:`${sinStock} (${sinStockPct}%)`, accent:"#dc2626", icon:"🚨", sub:"productos agotados"},
+                            {lbl:"Stock Bajo",         val:stockBajo,            accent:"#f59e0b", icon:"⚠️", sub:"bajo mínimo"},
+                            {lbl:"Sin Precio",         val:sinPrecio,            accent:"#6b7280", icon:"🏷", sub:"faltan precios"},
+                          ].map(({lbl,val,accent,icon,sub})=>(
+                            <div key={lbl} style={{background:"#fff",borderRadius:14,padding:"16px 14px",boxShadow:"var(--shadow-sm)",border:"1px solid var(--gray-100)",borderLeft:`4px solid ${accent}`}}>
+                              <div style={{fontSize:20,marginBottom:6}}>{icon}</div>
+                              <div style={{fontSize:11,fontWeight:700,color:"var(--gray-400)",textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>{lbl}</div>
+                              <div style={{fontSize:18,fontWeight:800,color:"var(--gray-900)",lineHeight:1}}>{val}</div>
+                              <div style={{fontSize:10,color:"var(--gray-400)",marginTop:4}}>{sub}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Barra de salud financiera */}
+                        <div style={{...S.card,marginBottom:16}}>
+                          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>📊 Salud Financiera del Inventario</div>
+                          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                            {[
+                              {lbl:"Cobertura de precios",pct:products.length>0?((products.filter(p=>p.precioCompra>0).length/products.length)*100):0,color:"#16a34a"},
+                              {lbl:"Productos con stock",  pct:products.length>0?((products.filter(p=>p.stock>0).length/products.length)*100):0, color:"#2563eb"},
+                              {lbl:"Margen de ganancia",   pct:Math.min(100,parseFloat(margenPct)||0), color:"#7c3aed"},
+                            ].map(({lbl,pct,color})=>(
+                              <div key={lbl}>
+                                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,marginBottom:4}}>
+                                  <span style={{color:"var(--gray-600)"}}>{lbl}</span>
+                                  <span style={{color}}>{pct.toFixed(1)}%</span>
+                                </div>
+                                <div style={{height:8,borderRadius:20,background:"var(--gray-100)",overflow:"hidden"}}>
+                                  <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:20,transition:"width .5s"}}/>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Top productos por valor */}
+                        <div style={S.card}>
+                          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🏆 Top 10 productos por valor en stock</div>
+                          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                            {[...products].sort((a,b)=>(parseFloat(b.precioCompra)||0)*(parseInt(b.stock)||0)-(parseFloat(a.precioCompra)||0)*(parseInt(a.stock)||0)).slice(0,10).map((p,i)=>{
+                              const val=(parseFloat(p.precioCompra)||0)*(parseInt(p.stock)||0);
+                              const maxVal=(parseFloat(products[0]?.precioCompra)||0)*(parseInt(products[0]?.stock)||0)||1;
+                              return(
+                                <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--gray-50)"}}>
+                                  <span style={{width:20,height:20,borderRadius:6,background:i<3?"var(--green-600)":"var(--gray-200)",color:i<3?"#fff":"var(--gray-500)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{i+1}</span>
+                                  <div style={{flex:1,minWidth:0}}>
+                                    <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
+                                    <div style={{height:4,borderRadius:10,background:"var(--gray-100)",marginTop:4,overflow:"hidden"}}>
+                                      <div style={{height:"100%",width:`${Math.min(100,(val/totalCosto)*100)}%`,background:"var(--green-500)",borderRadius:10}}/>
+                                    </div>
+                                  </div>
+                                  <div style={{textAlign:"right",flexShrink:0}}>
+                                    <div style={{fontSize:12,fontWeight:800,color:"var(--gray-900)"}}>{fmt(val)}</div>
+                                    <div style={{fontSize:10,color:"var(--gray-400)"}}>×{p.stock}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ══ VISTA COSTOS & PRECIOS ══ */}
+                    {contView==="costos" && (
+                      <div>
+                        {/* Margen global */}
+                        <div style={{...S.card,marginBottom:16}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                            <div>
+                              <div style={{fontWeight:700,fontSize:14}}>🎯 Margen de ganancia global</div>
+                              <div style={{fontSize:12,color:"var(--gray-500)",marginTop:2}}>Aplica sobre precio compra para sugerir precio al público</div>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:10}}>
+                              <input type="range" min="5" max="200" value={margenGlobal} onChange={e=>setMargenGlobal(Number(e.target.value))}
+                                style={{width:120,accentColor:"var(--green-600)"}}/>
+                              <div style={{background:"var(--green-600)",color:"#fff",borderRadius:8,padding:"6px 14px",fontWeight:800,fontSize:16,minWidth:60,textAlign:"center"}}>
+                                {margenGlobal}%
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Barra de búsqueda */}
+                        <div style={{position:"relative",marginBottom:16}}>
+                          <svg style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--gray-400)",pointerEvents:"none"}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                          <input style={{...S.inp,paddingLeft:42,borderRadius:12}} placeholder="Buscar producto por nombre o código..."
+                            value={contSearch} onChange={e=>setContSearch(e.target.value)}/>
+                        </div>
+
+                        {/* Tabla de costos */}
+                        <div style={{...S.card,padding:0,overflow:"hidden"}}>
+                          <div style={{overflowX:"auto"}}>
+                            <table style={{width:"100%",borderCollapse:"collapse",minWidth:580}}>
+                              <thead>
+                                <tr>
+                                  {["Producto","Stock","P.Compra","P.Sugerido","P.Venta","Margen%","Valor Stock"].map(h=>(
+                                    <th key={h} style={S.th}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {prodsFiltrados.map(p=>{
+                                  const pc = parseFloat(p.precioCompra)||0;
+                                  const pv = parseFloat(p.precioVenta)||0;
+                                  const ps = pc>0 ? Math.round(pc*(1+margenGlobal/100)) : 0;
+                                  const margen = pc>0&&pv>0 ? (((pv-pc)/pc)*100).toFixed(1) : "—";
+                                  const margenNum = parseFloat(margen)||0;
+                                  const valorStock = pc*(parseInt(p.stock)||0);
+                                  return(
+                                    <tr key={p.id} style={{background:"#fff"}}
+                                      onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                                      onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                                      <td style={S.td}>
+                                        <div style={{fontWeight:600,fontSize:13}}>{p.nombre}</div>
+                                        <div style={{fontSize:10,color:"var(--gray-400)"}}>{p.categoria||""}{p.armario?` · ${p.armario}`:""}</div>
+                                      </td>
+                                      <td style={{...S.td,textAlign:"center"}}>
+                                        <span style={{fontWeight:700,color:p.stock===0?"#dc2626":p.stock<=p.minimo?"#f59e0b":"var(--gray-800)"}}>{p.stock}</span>
+                                      </td>
+                                      <td style={S.td}><span style={{fontWeight:600,color:pc>0?"var(--gray-800)":"#9ca3af"}}>{pc>0?fmt(pc):"—"}</span></td>
+                                      <td style={S.td}>
+                                        {ps>0?(
+                                          <span style={{fontWeight:700,color:"var(--green-700)",background:"var(--green-50)",borderRadius:6,padding:"2px 7px",fontSize:12}}>{fmt(ps)}</span>
+                                        ):<span style={{color:"#9ca3af"}}>—</span>}
+                                      </td>
+                                      <td style={S.td}><span style={{fontWeight:600,color:pv>0?"var(--gray-800)":"#9ca3af"}}>{pv>0?fmt(pv):"—"}</span></td>
+                                      <td style={{...S.td,textAlign:"center"}}>
+                                        {margen!=="—"?(
+                                          <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,
+                                            background:margenNum>=20?"#dcfce7":margenNum>=10?"#fef3c7":"#fee2e2",
+                                            color:margenNum>=20?"#166534":margenNum>=10?"#92400e":"#991b1b"}}>
+                                            {margen}%
+                                          </span>
+                                        ):<span style={{color:"#9ca3af",fontSize:11}}>Sin datos</span>}
+                                      </td>
+                                      <td style={{...S.td,textAlign:"right"}}>
+                                        <span style={{fontWeight:700,color:"var(--gray-800)"}}>{valorStock>0?fmt(valorStock):"—"}</span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot>
+                                <tr style={{background:"var(--green-50)"}}>
+                                  <td style={{...S.td,fontWeight:800,color:"var(--green-800)"}}>TOTAL</td>
+                                  <td style={{...S.td,textAlign:"center",fontWeight:700}}>{products.reduce((s,p)=>s+(parseInt(p.stock)||0),0)}</td>
+                                  <td style={S.td}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(totalCosto)}</span></td>
+                                  <td style={S.td}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(products.reduce((s,p)=>s+Math.round((parseFloat(p.precioCompra)||0)*(1+margenGlobal/100))*(parseInt(p.stock)||0),0))}</span></td>
+                                  <td style={S.td}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(totalVenta)}</span></td>
+                                  <td style={S.td}></td>
+                                  <td style={{...S.td,textAlign:"right"}}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(totalCosto)}</span></td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* ════ ANÁLISIS ════ */}
           {tab==="analisis" && (
             <div className="fadeUp">
@@ -2083,7 +2340,7 @@ export default function App() {
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:32,height:32,background:"rgba(255,255,255,0.2)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🪴</div>
                 <div>
-                  <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>Invent<span style={{color:"#86efac"}}>App</span></div>
+                  <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>Bode<span style={{color:"#86efac"}}>App</span></div>
                   <div style={{fontSize:11,color:"rgba(255,255,255,0.7)"}}>{userDoc?.name||user.email?.split("@")[0]} · <span style={{fontWeight:700}}>{userDoc?.role||"consultor"}</span></div>
                 </div>
               </div>
@@ -2382,7 +2639,7 @@ export default function App() {
         <div style={S.ovrl} onClick={e=>{if(e.target===e.currentTarget){setInviteModal(false);setInviteEmail("");}}}>
           <div style={S.modal}>
             <div style={{fontWeight:800,fontSize:18,color:"var(--gray-900)",marginBottom:6}}>👥 Invitar a "{currentProject?.name}"</div>
-            <div style={{fontSize:13,color:"var(--gray-500)",marginBottom:20}}>La persona debe tener cuenta creada en InventApp.</div>
+            <div style={{fontSize:13,color:"var(--gray-500)",marginBottom:20}}>La persona debe tener cuenta creada en Bodegix.</div>
             <div style={S.fGrp}>
               <label style={S.lbl}>Email del colaborador</label>
               <input style={S.inp} type="email" value={inviteEmail} placeholder="colega@email.com" onChange={e=>setInviteEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&inviteMember()} autoFocus/>
@@ -2460,6 +2717,35 @@ export default function App() {
               </div>
               <div style={S.fGrp}><label style={S.lbl}>Cantidad *</label><input style={S.inp} type="number" min="1" value={movForm.qty} placeholder="1" onChange={e=>setMovForm(f=>({...f,qty:e.target.value}))}/></div>
               <div style={S.fGrp}><label style={S.lbl}>Motivo</label><input style={S.inp} value={movForm.motivo} placeholder="Compra proveedor..." onChange={e=>setMovForm(f=>({...f,motivo:e.target.value}))}/></div>
+              {/* Armario y Segmento */}
+              <div style={S.fGrp}>
+                <label style={S.lbl}>📦 {movForm.tipo==="entrada"?"Caja destino":"Caja"} (opcional)</label>
+                {(()=>{
+                  const armarios=[...new Set(products.filter(p=>p.armario).map(p=>p.armario))].sort();
+                  const segsDisp=movForm.armario&&movForm.armario!=="__nueva__"
+                    ?[...new Set(products.filter(p=>p.armario===movForm.armario&&p.segmento).map(p=>p.segmento))].sort():[];
+                  return(
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                      <div style={{flex:1,minWidth:120}}>
+                        <select value={movForm.armario||""} onChange={e=>setMovForm(f=>({...f,armario:e.target.value,segmento:""}))} style={{...S.inp,fontSize:13}}>
+                          <option value="">— Sin caja —</option>
+                          {armarios.map(a=><option key={a} value={a}>{a}</option>)}
+                          <option value="__nueva__">+ Nueva caja...</option>
+                        </select>
+                        {movForm.armario==="__nueva__"&&<input placeholder="Nombre nueva caja" style={{...S.inp,marginTop:6,fontSize:12}} onChange={e=>setMovForm(f=>({...f,armario:e.target.value}))}/>}
+                      </div>
+                      <div style={{flex:1,minWidth:100}}>
+                        <select value={movForm.segmento||""} onChange={e=>setMovForm(f=>({...f,segmento:e.target.value}))} style={{...S.inp,fontSize:13}}>
+                          <option value="">— Sección —</option>
+                          {segsDisp.map(s=><option key={s} value={s}>{s}</option>)}
+                          <option value="__nueva__">+ Nueva...</option>
+                        </select>
+                        {movForm.segmento==="__nueva__"&&<input placeholder="Nombre sección" style={{...S.inp,marginTop:6,fontSize:12}} onChange={e=>setMovForm(f=>({...f,segmento:e.target.value}))}/>}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:20}}>
               <button style={S.btn("var(--white)","var(--gray-600)",{border:"1.5px solid var(--gray-200)"})} onClick={()=>setMovModal(false)}>Cancelar</button>
