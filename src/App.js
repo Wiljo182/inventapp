@@ -65,7 +65,7 @@ const SEG_COLORS = [
 const emptyForm = () => ({
   nombre:"", codigo:"", codigoBarras:"", categoria:"", envase:"",
   stock:"", minimo:"5", precioCompra:"", precioVenta:"",
-  proveedor:"", unidad:"unid", nota:"", fechaVencimiento:"",
+  proveedor:"", marca:"", unidad:"unid", nota:"", fechaVencimiento:"",
   lote:"", armario:"", segmento:"",
 });
 
@@ -79,23 +79,26 @@ const ST     = { ok:{label:"Normal",bg:"#dcfce7",tx:"#166534"}, low:{label:"Stoc
 function expiryStatus(fechaVencimiento) {
   if (!fechaVencimiento || fechaVencimiento === "null" || fechaVencimiento === "") return null;
   let exp;
-  if (fechaVencimiento.includes("T")) {
-    exp = new Date(fechaVencimiento);
-  } else {
-    const [y, m, d] = fechaVencimiento.split("-").map(Number);
-    exp = new Date(y, m - 1, d);
-  }
-  if (isNaN(exp.getTime())) return null;
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  try {
+    if (String(fechaVencimiento).includes("T")) {
+      exp = new Date(fechaVencimiento);
+    } else {
+      const parts = String(fechaVencimiento).split("-").map(Number);
+      exp = new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+  } catch(e) { return null; }
+  if (!exp || isNaN(exp.getTime())) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
   const expDay = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate());
   const days = Math.round((expDay - now) / 86400000);
   const fechaStr = exp.toLocaleDateString("es-CO", {day:"2-digit", month:"short", year:"numeric"});
-  if (days < 0)   return { label:`Vencido — ${fechaStr}`,      bg:"#fee2e2", tx:"#991b1b", icon:"💀", level:"expired",  days, fechaStr };
-  if (days === 0) return { label:`Vence HOY — ${fechaStr}`,    bg:"#fee2e2", tx:"#991b1b", icon:"🔴", level:"critical", days, fechaStr };
-  if (days <= 7)  return { label:`${days}d — ${fechaStr}`,     bg:"#fee2e2", tx:"#991b1b", icon:"🔴", level:"critical", days, fechaStr };
-  if (days <= 30) return { label:`${days}d — ${fechaStr}`,     bg:"#fef3c7", tx:"#92400e", icon:"⚠️", level:"warning",  days, fechaStr };
-  return           { label:`${days}d — ${fechaStr}`,           bg:"#dcfce7", tx:"#166534", icon:"🟢", level:"ok",       days, fechaStr };
+  // Color code: rojo = ≤7d, amarillo = 8-14d, verde claro = ≤30d, verde = >30d
+  if (days < 0)   return {label:`Vencido — ${fechaStr}`,   bg:"#fecaca",tx:"#7f1d1d",rowBg:"#fef2f2",icon:"💀",level:"expired",  days,fechaStr};
+  if (days === 0) return {label:`Vence HOY`,               bg:"#fca5a5",tx:"#7f1d1d",rowBg:"#fef2f2",icon:"🚨",level:"critical", days,fechaStr};
+  if (days <= 7)  return {label:`${days}d — ${fechaStr}`,  bg:"#fca5a5",tx:"#991b1b",rowBg:"#fff1f2",icon:"🔴",level:"critical", days,fechaStr};
+  if (days <= 14) return {label:`${days}d — ${fechaStr}`,  bg:"#fde68a",tx:"#78350f",rowBg:"#fffbeb",icon:"⚠️",level:"warning",  days,fechaStr};
+  if (days <= 30) return {label:`${days}d — ${fechaStr}`,  bg:"#fef08a",tx:"#713f12",rowBg:"#fefce8",icon:"🟡",level:"soon",     days,fechaStr};
+  return               {label:`${days}d — ${fechaStr}`,   bg:"#bbf7d0",tx:"#14532d",rowBg:null,    icon:"🟢",level:"ok",        days,fechaStr};
 }
 
 function resizeImage(file, maxPx=1024) {
@@ -397,6 +400,7 @@ export default function App() {
   const [form,          setForm]          = useState(emptyForm());
   const [toast,         setToast]         = useState(null);
   const [search,        setSearch]        = useState("");
+  const [filterMarca,   setFilterMarca]   = useState("");  // filtro por marca
   const [catFilter,     setCatF]          = useState("");
   const [editId,        setEditId]        = useState(null);
   const [editData,      setEditData]      = useState({});
@@ -423,6 +427,8 @@ export default function App() {
   const [bodegaHighlight,setBodegaHighlight]=useState(null); // id producto resaltado en bodega
   const [sinUbicarOpen,  setSinUbicarOpen]  = useState(false); // colapsable sin ubicar en bodega
   const [contSearch,     setContSearch]     = useState("");    // búsqueda en contabilidad
+  const [contEditId,     setContEditId]     = useState(null);  // producto en edición en contabilidad
+  const [contEditData,   setContEditData]   = useState({});    // datos edición contabilidad
   const [contView,       setContView]       = useState("general"); // vista contabilidad
   const [margenGlobal,   setMargenGlobal]   = useState(30);   // % margen global contabilidad
   const [teamMembers,   setTeamMembers]   = useState([]);
@@ -464,6 +470,26 @@ export default function App() {
       setAuthLoading(false);
     });
   }, []);
+
+  // ── Interceptar botón Atrás del navegador ──
+  useEffect(() => {
+    window.history.pushState({ bodegixTab: "dashboard" }, "", window.location.pathname);
+    const handlePop = () => {
+      // Siempre re-push para evitar salir de la SPA
+      window.history.pushState({ bodegixTab: tab }, "", window.location.pathname);
+      // Usar el historial interno de la app
+      setTabHistory(h => {
+        if (h.length > 0) {
+          const prev = h[h.length - 1];
+          setTab(prev);
+          return h.slice(0, -1);
+        }
+        return h;
+      });
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []); // eslint-disable-line
 
   // ── Cargar proyectos ──
   useEffect(() => {
@@ -790,6 +816,7 @@ export default function App() {
       precioVenta:     prod.precioVenta   ? String(prod.precioVenta)  : f.precioVenta,
       precioCompra:    prod.precioCompra  ? String(prod.precioCompra) : f.precioCompra,
       proveedor:       prod.proveedor     || f.proveedor,
+      marca:           prod.marca         || f.marca,
       nota:            prod.nota          || f.nota,
       fechaVencimiento: prod.fechaVencimiento || f.fechaVencimiento,
       lote:             prod.lote             || f.lote,
@@ -899,8 +926,8 @@ export default function App() {
   const totalVal  = products.reduce((s,p)=>s+(p.stock*(p.precioVenta||0)),0);
   const expiryAlerts = products.filter(p=>{ const s=expiryStatus(p.fechaVencimiento); return s&&s.level!=="ok"; });
   const filtered  = products.filter(p=>{
-    const ms = p.nombre?.toLowerCase().includes(search.toLowerCase())||p.codigo?.toLowerCase().includes(search.toLowerCase())||p.codigoBarras?.includes(search);
-    return ms&&(!catFilter||p.categoria===catFilter);
+    const ms = (p.nombre?.toLowerCase().includes(search.toLowerCase())||p.codigo?.toLowerCase().includes(search.toLowerCase())||p.codigoBarras?.includes(search)) && (!filterMarca||(p.marca||p.proveedor||'')=== filterMarca);
+    return ms&&(!catFilter||p.categoria===catFilter)&&(!filterMarca||(p.marca||p.proveedor||"")===filterMarca);
   });
 
   // ── Auth loading ──
@@ -1310,6 +1337,7 @@ export default function App() {
                   <div style={S.fGrp}><label style={S.lbl}>Precio Compra (COP)</label><input style={S.inp} type="number" value={form.precioCompra} placeholder="0" onChange={e=>setForm(f=>({...f,precioCompra:e.target.value}))}/></div>
                   <div style={S.fGrp}><label style={S.lbl}>Precio Venta (COP)</label><input style={S.inp} type="number" value={form.precioVenta} placeholder="0" onChange={e=>setForm(f=>({...f,precioVenta:e.target.value}))}/></div>
                   <div style={S.fGrp}><label style={S.lbl}>Proveedor</label><input style={S.inp} value={form.proveedor} placeholder="Distribuidora Caribe" onChange={e=>setForm(f=>({...f,proveedor:e.target.value}))}/></div>
+                  <div style={S.fGrp}><label style={S.lbl}>Marca</label><input style={S.inp} value={form.marca||""} placeholder="Ej: DaVinci, Hersheys, Cruz de Arada" onChange={e=>setForm(f=>({...f,marca:e.target.value}))}/></div>
                   <div style={S.fGrp}><label style={S.lbl}>Unidad</label>
                     <select style={S.inp} value={form.unidad} onChange={e=>setForm(f=>({...f,unidad:e.target.value}))}>
                       {UNITS.map(x=><option key={x}>{x}</option>)}
@@ -1364,6 +1392,10 @@ export default function App() {
                   <select style={{...S.inp,width:"auto",fontSize:12,padding:"7px 10px"}} value={catFilter} onChange={e=>setCatF(e.target.value)}>
                     <option value="">Todas las categorías</option>{getCats(currentProject?.name, products).map(x=><option key={x}>{x}</option>)}
                   </select>
+                  <select style={{...S.inp,width:"auto",fontSize:12,padding:"7px 10px"}} value={filterMarca} onChange={e=>setFilterMarca(e.target.value)}>
+                    <option value="">Todas las marcas</option>
+                    {[...new Set(products.map(p=>p.marca||p.proveedor).filter(Boolean))].sort().map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
                   {isConsultor && <button style={S.btn("var(--green-600)")} onClick={()=>goTab("registrar")}>+ Registrar</button>}
                 </div>
               </div>
@@ -1379,8 +1411,10 @@ export default function App() {
                         {filtered.map(p=>{
                           const st  = stOf(p);
                           const col = CAT_COLOR[p.categoria]||"#9ca3af";
+                          const _exp = expiryStatus(p.fechaVencimiento);
+                          const _rowBg = editId===p.id ? "#f0fdf4" : (_exp?.rowBg || "#fff");
                           return editId===p.id ? (
-                            <tr key={p.id} id={"inv-row-"+p.id} style={{background:"#f0fdf4"}}>
+                            <tr key={p.id} id={"inv-row-"+p.id} style={{background:_rowBg}}>
                               <td style={S.td} colSpan={6}>
                                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
                                   {[["stock","Stock",editData.stock,65],["minimo","Mín",editData.minimo,55],["precioCompra","P.Compra",editData.precioCompra,95],["precioVenta","P.Venta",editData.precioVenta,95]].map(([k,lbl,v,w])=>(
@@ -1402,7 +1436,10 @@ export default function App() {
                               <td style={S.td}></td>
                             </tr>
                           ) : (
-                            <tr key={p.id}>
+                            <tr key={p.id} id={"inv-row-"+p.id}
+                              style={{background:_rowBg,transition:"background .15s"}}
+                              onMouseEnter={e=>e.currentTarget.style.background=_exp?.rowBg?"#fde8e8":"#f8fafc"}
+                              onMouseLeave={e=>e.currentTarget.style.background=_rowBg}>
                               <td style={S.td}><div style={{fontWeight:600}}>{p.nombre}</div><div style={{fontSize:11,color:"var(--gray-400)"}}>{p.codigo}{p.codigoBarras?" · 🔲"+p.codigoBarras:""}</div></td>
                               <td style={S.td}><span style={{display:"inline-flex",alignItems:"center",gap:5}}><span style={{width:8,height:8,borderRadius:"50%",background:col,display:"inline-block"}}/>{p.categoria}</span></td>
                               <td style={S.td}><strong>{p.stock}</strong></td>
@@ -1911,10 +1948,14 @@ export default function App() {
                               const stBd  = p.stock===0?"#fecaca":p.stock<=p.minimo?"#fde68a":"#bbf7d0";
                               const isEditing = bodegaEditId === p.id;
                               return (
+                                {(()=>{
+                                  const _eArm = expiryStatus(p.fechaVencimiento);
+                                  const _bgArm = bodegaHighlight===p.id ? "#dcfce7" : isEditing ? "#f0fdf4" : (_eArm?.rowBg || "#fafafa");
+                                  const _bdArm = bodegaHighlight===p.id ? "2.5px solid var(--green-500)" : isEditing ? "2px solid var(--green-400)" : _eArm?.level==="critical" ? "1.5px solid #fca5a5" : _eArm?.level==="warning" ? "1.5px solid #fde68a" : "1px solid #f0f0f0";
+                                  return (
                                 <div key={p.id} id={"bodega-prod-"+p.id} style={{
                                   borderRadius:12, overflow:"hidden",
-                                  border: bodegaHighlight===p.id ? "2.5px solid var(--green-500)" : isEditing ? "2px solid var(--green-400)" : "1px solid #f0f0f0",
-                                  background: bodegaHighlight===p.id ? "#dcfce7" : isEditing ? "#f0fdf4" : "#fafafa",
+                                  border:_bdArm, background:_bgArm,
                                   transition:"all .3s",
                                   boxShadow: bodegaHighlight===p.id ? "0 0 0 4px rgba(34,197,94,.2)" : "none",
                                 }}>
@@ -1941,7 +1982,10 @@ export default function App() {
                                         <div style={{display:"flex",gap:6,marginTop:3,flexWrap:"wrap"}}>
                                           {p.categoria && <span style={{fontSize:10,color:"#6b7280",background:"#f3f4f6",borderRadius:20,padding:"1px 7px",fontWeight:600}}>{p.categoria}</span>}
                                           {p.lote && <span style={{fontSize:10,color:"#6b7280",background:"#f3f4f6",borderRadius:20,padding:"1px 7px"}}>Lote: {p.lote}</span>}
-                                          {p.fechaVencimiento && <span style={{fontSize:10,color:"#92400e",background:"#fef3c7",borderRadius:20,padding:"1px 7px",fontWeight:600}}>Vence: {new Date(p.fechaVencimiento).toLocaleDateString("es-CO",{day:"2-digit",month:"short"})}</span>}
+                                          {p.fechaVencimiento && (()=>{
+                                        const _ev = expiryStatus(p.fechaVencimiento);
+                                        return _ev ? <span style={{fontSize:10,background:_ev.bg,color:_ev.tx,borderRadius:20,padding:"2px 8px",fontWeight:700}}>{_ev.icon} {_ev.label}</span> : null;
+                                      })()}
                                         </div>
                                       )}
                                     </div>
@@ -2004,6 +2048,8 @@ export default function App() {
                                     </div>
                                   )}
                                 </div>
+                                  );
+                                })()}
                               );
                             })}
                           </div>
@@ -2031,9 +2077,10 @@ export default function App() {
                 const stockBajo     = products.filter(p=>p.stock>0&&p.stock<=p.minimo).length;
                 const sinPrecio     = products.filter(p=>!p.precioCompra||p.precioCompra===0).length;
                 const prodsFiltrados = products.filter(p=>
-                  !contSearch.trim() ||
+                  (!contSearch.trim() ||
                   p.nombre?.toLowerCase().includes(contSearch.toLowerCase()) ||
-                  p.codigo?.toLowerCase().includes(contSearch.toLowerCase())
+                  p.codigo?.toLowerCase().includes(contSearch.toLowerCase())) &&
+                  (!filterMarca || (p.marca||p.proveedor||"")=== filterMarca)
                 );
 
                 return (
@@ -2133,28 +2180,29 @@ export default function App() {
                     {/* ══ VISTA COSTOS & PRECIOS ══ */}
                     {contView==="costos" && (
                       <div>
-                        {/* Margen global */}
-                        <div style={{...S.card,marginBottom:16}}>
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                        {/* Info de edición individual */}
+                        <div style={{...S.card,marginBottom:16,background:"#f0fdf4",border:"1px solid #bbf7d0",padding:"14px 18px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <span style={{fontSize:20}}>💡</span>
                             <div>
-                              <div style={{fontWeight:700,fontSize:14}}>🎯 Margen de ganancia global</div>
-                              <div style={{fontSize:12,color:"var(--gray-500)",marginTop:2}}>Aplica sobre precio compra para sugerir precio al público</div>
-                            </div>
-                            <div style={{display:"flex",alignItems:"center",gap:10}}>
-                              <input type="range" min="5" max="200" value={margenGlobal} onChange={e=>setMargenGlobal(Number(e.target.value))}
-                                style={{width:120,accentColor:"var(--green-600)"}}/>
-                              <div style={{background:"var(--green-600)",color:"#fff",borderRadius:8,padding:"6px 14px",fontWeight:800,fontSize:16,minWidth:60,textAlign:"center"}}>
-                                {margenGlobal}%
-                              </div>
+                              <div style={{fontWeight:700,fontSize:13,color:"var(--green-800)"}}>Edición de precios individual</div>
+                              <div style={{fontSize:12,color:"var(--green-700)",marginTop:2}}>Edita precio compra y venta directamente en la tabla. Escribe un % de margen para calcular el precio sugerido automáticamente.</div>
                             </div>
                           </div>
                         </div>
 
-                        {/* Barra de búsqueda */}
-                        <div style={{position:"relative",marginBottom:16}}>
-                          <svg style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--gray-400)",pointerEvents:"none"}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                          <input style={{...S.inp,paddingLeft:42,borderRadius:12}} placeholder="Buscar producto por nombre o código..."
-                            value={contSearch} onChange={e=>setContSearch(e.target.value)}/>
+                        {/* Barra de búsqueda + filtro marca */}
+                        <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                          <div style={{position:"relative",flex:2,minWidth:200}}>
+                            <svg style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--gray-400)",pointerEvents:"none"}} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input style={{...S.inp,paddingLeft:42,borderRadius:12}} placeholder="Buscar producto por nombre o código..."
+                              value={contSearch} onChange={e=>setContSearch(e.target.value)}/>
+                          </div>
+                          <select value={filterMarca} onChange={e=>setFilterMarca(e.target.value)}
+                            style={{...S.inp,flex:1,minWidth:130,borderRadius:12,fontSize:13}}>
+                            <option value="">Todas las marcas</option>
+                            {[...new Set(products.map(p=>p.marca||p.proveedor).filter(Boolean))].sort().map(m=><option key={m} value={m}>{m}</option>)}
+                          </select>
                         </div>
 
                         {/* Tabla de costos */}
@@ -2172,40 +2220,88 @@ export default function App() {
                                 {prodsFiltrados.map(p=>{
                                   const pc = parseFloat(p.precioCompra)||0;
                                   const pv = parseFloat(p.precioVenta)||0;
-                                  const ps = pc>0 ? Math.round(pc*(1+margenGlobal/100)) : 0;
                                   const margen = pc>0&&pv>0 ? (((pv-pc)/pc)*100).toFixed(1) : "—";
                                   const margenNum = parseFloat(margen)||0;
                                   const valorStock = pc*(parseInt(p.stock)||0);
+                                  const isEditingPrice = contEditId===p.id;
                                   return(
-                                    <tr key={p.id} style={{background:"#fff"}}
-                                      onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                                      onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                                    <tr key={p.id} style={{background:isEditingPrice?"#f0fdf4":"#fff",transition:"background .15s"}}
+                                      onMouseEnter={e=>{if(!isEditingPrice)e.currentTarget.style.background="#f8fafc"}}
+                                      onMouseLeave={e=>{if(!isEditingPrice)e.currentTarget.style.background="#fff"}}>
                                       <td style={S.td}>
                                         <div style={{fontWeight:600,fontSize:13}}>{p.nombre}</div>
-                                        <div style={{fontSize:10,color:"var(--gray-400)"}}>{p.categoria||""}{p.armario?` · ${p.armario}`:""}</div>
+                                        <div style={{fontSize:10,color:"var(--gray-400)"}}>{p.marca||p.proveedor||""}{p.armario?` · ${p.armario}`:""}</div>
                                       </td>
                                       <td style={{...S.td,textAlign:"center"}}>
                                         <span style={{fontWeight:700,color:p.stock===0?"#dc2626":p.stock<=p.minimo?"#f59e0b":"var(--gray-800)"}}>{p.stock}</span>
                                       </td>
-                                      <td style={S.td}><span style={{fontWeight:600,color:pc>0?"var(--gray-800)":"#9ca3af"}}>{pc>0?fmt(pc):"—"}</span></td>
-                                      <td style={S.td}>
-                                        {ps>0?(
-                                          <span style={{fontWeight:700,color:"var(--green-700)",background:"var(--green-50)",borderRadius:6,padding:"2px 7px",fontSize:12}}>{fmt(ps)}</span>
-                                        ):<span style={{color:"#9ca3af"}}>—</span>}
-                                      </td>
-                                      <td style={S.td}><span style={{fontWeight:600,color:pv>0?"var(--gray-800)":"#9ca3af"}}>{pv>0?fmt(pv):"—"}</span></td>
-                                      <td style={{...S.td,textAlign:"center"}}>
-                                        {margen!=="—"?(
-                                          <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,
-                                            background:margenNum>=20?"#dcfce7":margenNum>=10?"#fef3c7":"#fee2e2",
-                                            color:margenNum>=20?"#166534":margenNum>=10?"#92400e":"#991b1b"}}>
-                                            {margen}%
-                                          </span>
-                                        ):<span style={{color:"#9ca3af",fontSize:11}}>Sin datos</span>}
-                                      </td>
-                                      <td style={{...S.td,textAlign:"right"}}>
-                                        <span style={{fontWeight:700,color:"var(--gray-800)"}}>{valorStock>0?fmt(valorStock):"—"}</span>
-                                      </td>
+                                      {isEditingPrice ? (
+                                        <>
+                                          <td style={S.td}>
+                                            <input type="number" value={contEditData.precioCompra}
+                                              onChange={e=>setContEditData(d=>({...d,precioCompra:e.target.value}))}
+                                              style={{...S.inp,width:90,padding:"5px 7px",fontSize:12}}/>
+                                          </td>
+                                          <td style={S.td}>
+                                            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                              <input type="number" placeholder="%" value={contEditData.margenPct||""}
+                                                onChange={e=>{
+                                                  const pct=Number(e.target.value);
+                                                  const sugerido=contEditData.precioCompra>0?Math.round(contEditData.precioCompra*(1+pct/100)):0;
+                                                  setContEditData(d=>({...d,margenPct:e.target.value,precioVenta:sugerido||d.precioVenta}));
+                                                }}
+                                                style={{...S.inp,width:55,padding:"5px 7px",fontSize:12}} title="% de margen → calcula precio venta"/>
+                                              <span style={{fontSize:10,color:"var(--gray-400)"}}>%</span>
+                                            </div>
+                                          </td>
+                                          <td style={S.td}>
+                                            <input type="number" value={contEditData.precioVenta}
+                                              onChange={e=>setContEditData(d=>({...d,precioVenta:e.target.value}))}
+                                              style={{...S.inp,width:90,padding:"5px 7px",fontSize:12}}/>
+                                          </td>
+                                          <td style={{...S.td,textAlign:"center"}}>
+                                            {contEditData.precioCompra>0&&contEditData.precioVenta>0?(
+                                              <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,background:"#dcfce7",color:"#166534"}}>
+                                                {(((contEditData.precioVenta-contEditData.precioCompra)/contEditData.precioCompra)*100).toFixed(1)}%
+                                              </span>
+                                            ):<span style={{color:"#9ca3af",fontSize:11}}>—</span>}
+                                          </td>
+                                          <td style={{...S.td,textAlign:"right"}}>
+                                            <div style={{display:"flex",gap:5}}>
+                                              <button onClick={async()=>{
+                                                try{
+                                                  await updateDoc(doc(db,`projects/${currentProject.id}/products`,p.id),{precioCompra:parseFloat(contEditData.precioCompra)||0,precioVenta:parseFloat(contEditData.precioVenta)||0});
+                                                  setProducts(prev=>prev.map(x=>x.id===p.id?{...x,precioCompra:parseFloat(contEditData.precioCompra)||0,precioVenta:parseFloat(contEditData.precioVenta)||0}:x));
+                                                  setContEditId(null);showToast("✅ Precio actualizado","success");
+                                                }catch(e){showToast("❌ "+e.message,"warning");}
+                                              }} style={{...S.bSm("var(--green-600)"),padding:"5px 10px",fontSize:12}}>✓</button>
+                                              <button onClick={()=>setContEditId(null)} style={{...S.bSm("var(--gray-200)","var(--gray-600)"),padding:"5px 10px",fontSize:12}}>✕</button>
+                                            </div>
+                                          </td>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <td style={S.td}><span style={{fontWeight:600,color:pc>0?"var(--gray-800)":"#9ca3af"}}>{pc>0?fmt(pc):"—"}</span></td>
+                                          <td style={S.td}><span style={{color:"#9ca3af",fontSize:11}}>Editar →</span></td>
+                                          <td style={S.td}><span style={{fontWeight:600,color:pv>0?"var(--gray-800)":"#9ca3af"}}>{pv>0?fmt(pv):"—"}</span></td>
+                                          <td style={{...S.td,textAlign:"center"}}>
+                                            {margen!=="—"?(
+                                              <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,
+                                                background:margenNum>=20?"#dcfce7":margenNum>=10?"#fef3c7":"#fee2e2",
+                                                color:margenNum>=20?"#166534":margenNum>=10?"#92400e":"#991b1b"}}>
+                                                {margen}%
+                                              </span>
+                                            ):<span style={{color:"#9ca3af",fontSize:11}}>Sin datos</span>}
+                                          </td>
+                                          <td style={{...S.td,textAlign:"right"}}>
+                                            <div style={{display:"flex",gap:5,justifyContent:"flex-end"}}>
+                                              <span style={{fontWeight:700,color:"var(--gray-800)"}}>{valorStock>0?fmt(valorStock):"—"}</span>
+                                              <button onClick={()=>{setContEditId(p.id);setContEditData({precioCompra:pc,precioVenta:pv,margenPct:margenNum>0?margenNum.toFixed(0):"30"});}}
+                                                style={{...S.bSm("var(--green-50)","var(--green-700)"),padding:"3px 8px",fontSize:11}}>✏️</button>
+                                            </div>
+                                          </td>
+                                        </>
+                                      )}
                                     </tr>
                                   );
                                 })}
@@ -2215,7 +2311,7 @@ export default function App() {
                                   <td style={{...S.td,fontWeight:800,color:"var(--green-800)"}}>TOTAL</td>
                                   <td style={{...S.td,textAlign:"center",fontWeight:700}}>{products.reduce((s,p)=>s+(parseInt(p.stock)||0),0)}</td>
                                   <td style={S.td}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(totalCosto)}</span></td>
-                                  <td style={S.td}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(products.reduce((s,p)=>s+Math.round((parseFloat(p.precioCompra)||0)*(1+margenGlobal/100))*(parseInt(p.stock)||0),0))}</span></td>
+                                  <td style={S.td}><span style={{fontSize:11,color:"var(--gray-400)"}}>—</span></td>
                                   <td style={S.td}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(totalVenta)}</span></td>
                                   <td style={S.td}></td>
                                   <td style={{...S.td,textAlign:"right"}}><span style={{fontWeight:800,color:"var(--green-800)"}}>{fmt(totalCosto)}</span></td>
@@ -2236,6 +2332,110 @@ export default function App() {
           {tab==="analisis" && (
             <div className="fadeUp">
               <div style={S.secH}><div><div style={S.secT}>Análisis</div><div style={S.secS}>Inteligencia para tu negocio</div></div></div>
+
+              {/* ── KPIs analíticos ── */}
+              {(()=>{
+                const movs = movements;
+                // Más vendidos (por cantidad de salidas)
+                const salidasPorProd = {};
+                movs.filter(m=>m.tipo==="salida").forEach(m=>{
+                  salidasPorProd[m.productoId]=(salidasPorProd[m.productoId]||0)+(parseInt(m.cantidad)||0);
+                });
+                const topVendidos = Object.entries(salidasPorProd).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([id,qty])=>({
+                  prod:products.find(p=>p.id===id), qty
+                })).filter(x=>x.prod);
+
+                // Menos vendidos (con stock pero pocas/cero salidas)
+                const menosVendidos = products.filter(p=>p.stock>0).map(p=>({
+                  prod:p, qty:salidasPorProd[p.id]||0
+                })).sort((a,b)=>a.qty-b.qty).slice(0,5);
+
+                // Marca más vendida
+                const marcaSalidas = {};
+                topVendidos.forEach(({prod,qty})=>{
+                  const m = prod.marca||prod.proveedor||"Sin marca";
+                  marcaSalidas[m]=(marcaSalidas[m]||0)+qty;
+                });
+                const topMarca = Object.entries(marcaSalidas).sort((a,b)=>b[1]-a[1])[0];
+
+                // Productos más costosos
+                const masCostosos = [...products].filter(p=>p.precioCompra>0).sort((a,b)=>(parseFloat(b.precioCompra)||0)-(parseFloat(a.precioCompra)||0)).slice(0,5);
+
+                // Mes actual para temporada
+                const mesActual = new Date().getMonth(); // 0-11
+                // Temporada Colombia: lluvia abr-may y oct-nov → insecticidas, deshumidificadores
+                // Calor dic-mar → bebidas frías, helados
+                const temporadaActual = mesActual>=3&&mesActual<=4 ? "☔ Temporada de lluvias" : mesActual>=9&&mesActual<=10 ? "☔ Temporada de lluvias" : mesActual>=11||mesActual<=2 ? "☀️ Temporada seca" : "🌤 Temporada mixta";
+
+                return (
+                  <div style={{marginBottom:20}}>
+                    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
+                      {/* Top vendidos */}
+                      <div style={{...S.card,marginBottom:0}}>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>🏆 Más vendidos</div>
+                        {topVendidos.length>0 ? topVendidos.map(({prod,qty},i)=>(
+                          <div key={prod.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:i<topVendidos.length-1?"1px solid var(--gray-50)":"none"}}>
+                            <span style={{width:20,height:20,borderRadius:6,background:i===0?"#f59e0b":i===1?"#9ca3af":i===2?"#b45309":"var(--gray-100)",color:i<3?"#fff":"var(--gray-500)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,flexShrink:0}}>{i+1}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{prod.nombre}</div>
+                              <div style={{fontSize:10,color:"var(--gray-400)"}}>{prod.marca||prod.proveedor||prod.categoria}</div>
+                            </div>
+                            <span style={{fontSize:12,fontWeight:800,color:"var(--green-700)",flexShrink:0}}>{qty} uds salidas</span>
+                          </div>
+                        )) : <div style={{color:"var(--gray-300)",fontSize:12,textAlign:"center",padding:"12px 0"}}>Sin movimientos registrados</div>}
+                        {topMarca && <div style={{marginTop:10,padding:"8px 12px",background:"var(--green-50)",borderRadius:8,fontSize:12}}><strong>🏅 Marca top:</strong> {topMarca[0]} ({topMarca[1]} uds)</div>}
+                      </div>
+
+                      {/* Menos vendidos */}
+                      <div style={{...S.card,marginBottom:0}}>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📉 Menos vendidos (con stock)</div>
+                        {menosVendidos.map(({prod,qty},i)=>(
+                          <div key={prod.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:i<menosVendidos.length-1?"1px solid var(--gray-50)":"none"}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{prod.nombre}</div>
+                              <div style={{fontSize:10,color:"var(--gray-400)"}}>Stock: {prod.stock} {prod.unidad||"unid"}</div>
+                            </div>
+                            <span style={{fontSize:11,fontWeight:700,color:qty===0?"#dc2626":"#f59e0b",background:qty===0?"#fee2e2":"#fef3c7",borderRadius:20,padding:"2px 8px",flexShrink:0}}>{qty===0?"Sin ventas":`${qty} salidas`}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Más costosos */}
+                      <div style={{...S.card,marginBottom:0}}>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>💎 Productos más costosos</div>
+                        {masCostosos.map((p,i)=>(
+                          <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:i<masCostosos.length-1?"1px solid var(--gray-50)":"none"}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nombre}</div>
+                              <div style={{fontSize:10,color:"var(--gray-400)"}}>{p.categoria}</div>
+                            </div>
+                            <span style={{fontSize:12,fontWeight:800,color:"var(--gray-800)",flexShrink:0}}>{fmt(p.precioCompra)}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Temporada */}
+                      <div style={{...S.card,marginBottom:0}}>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>🗓 Temporada actual</div>
+                        <div style={{padding:"10px 14px",background:"var(--green-50)",borderRadius:10,marginBottom:10}}>
+                          <div style={{fontWeight:700,fontSize:13,color:"var(--green-800)"}}>{temporadaActual}</div>
+                          <div style={{fontSize:11,color:"var(--green-700)",marginTop:4}}>
+                            {mesActual>=3&&mesActual<=4||mesActual>=9&&mesActual<=10
+                              ? "Considera abastecerte de: impermeables, paraguas, bebidas calientes, té, caldos"
+                              : "Considera abastecerte de: bebidas frías, syrups para granizados, vasos fríos"}
+                          </div>
+                        </div>
+                        <div style={{fontWeight:700,fontSize:13,color:"var(--gray-700)",marginBottom:6}}>📦 Próxima temporada:</div>
+                        <div style={{fontSize:11,color:"var(--gray-500)"}}>
+                          {mesActual>=3&&mesActual<=4||mesActual>=9&&mesActual<=10
+                            ? "☀️ Temporada seca (dic-mar): bebidas frías, helados, granizados, vasos descartables"
+                            : "☔ Temporada de lluvias (abr-may, oct-nov): bebidas calientes, café, té, chai latte"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
                 {/* Gráfica por categoría */}
